@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { getDashboardInsights, getDuplicateCandidates, getEventsOverview, getPendingBusinessCardReviews } from "@/lib/contacts/queries";
+import { getAudienceLists, getOutreachCampaigns, getUpcomingFollowups } from "@/lib/ops/queries";
 
 export default async function InsightsPage() {
-  const [insights, duplicates, events, pendingCards] = await Promise.all([
+  const [insights, duplicates, events, pendingCards, audienceLists, campaigns, upcomingFollowups] = await Promise.all([
     getDashboardInsights(),
     getDuplicateCandidates(),
     getEventsOverview(),
     getPendingBusinessCardReviews(),
+    getAudienceLists(),
+    getOutreachCampaigns(),
+    getUpcomingFollowups(8),
   ]);
 
   const cards = [
@@ -18,6 +22,7 @@ export default async function InsightsPage() {
     ["검수 대기 명함", pendingCards.length],
     ["중복 후보", duplicates.length],
     ["담당자 미지정", insights.totals.noOwner],
+    ["저장된 대상 리스트", audienceLists.length],
   ];
 
   return (
@@ -150,6 +155,57 @@ export default async function InsightsPage() {
             >
               카테고리 미지정 연락처 {insights.totals.noCategory}건
             </Link>
+          </div>
+        </article>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-2">
+        <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-semibold text-slate-950">최근 발송 이력</h2>
+          <div className="mt-5 space-y-3">
+            {campaigns.slice(0, 6).map((campaign) => (
+              <Link
+                key={campaign.id}
+                href="/broadcasts"
+                className="block rounded-2xl bg-slate-50 px-4 py-3 text-sm transition hover:bg-slate-100"
+              >
+                <div className="font-medium text-slate-900">{campaign.title}</div>
+                <div className="mt-1 text-slate-600">
+                  {campaign.channel} · {campaign.status} · 대상 {campaign.recipientCount}명
+                </div>
+              </Link>
+            ))}
+            {campaigns.length === 0 ? (
+              <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                최근 발송 이력이 없습니다.
+              </div>
+            ) : null}
+          </div>
+        </article>
+
+        <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-semibold text-slate-950">다가오는 팔로업</h2>
+          <div className="mt-5 space-y-3">
+            {upcomingFollowups.map((followup) => (
+              <Link
+                key={followup.id}
+                href={followup.contactId ? `/cards/${followup.contactId}` : "/broadcasts"}
+                className="block rounded-2xl bg-slate-50 px-4 py-3 text-sm transition hover:bg-slate-100"
+              >
+                <div className="font-medium text-slate-900">{followup.summary}</div>
+                <div className="mt-1 text-slate-600">
+                  {followup.channel} ·{" "}
+                  {followup.nextFollowUpAt
+                    ? new Date(followup.nextFollowUpAt).toLocaleString("ko-KR")
+                    : "일정 미정"}
+                </div>
+              </Link>
+            ))}
+            {upcomingFollowups.length === 0 ? (
+              <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                예정된 팔로업이 없습니다.
+              </div>
+            ) : null}
           </div>
         </article>
       </section>

@@ -3,10 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   addContactToEventAction,
+  completeContactFollowupAction,
+  createContactFollowupAction,
   removeContactEventAction,
 } from "@/app/actions";
 import { ContactForm } from "@/app/cards/_components/contact-form";
 import { getContactDetail, getContactFormOptions } from "@/lib/contacts/queries";
+import { getContactActivity, getContactFollowups } from "@/lib/ops/queries";
 
 export default async function CardDetailPage({
   params,
@@ -14,9 +17,11 @@ export default async function CardDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [contact, options] = await Promise.all([
+  const [contact, options, followups, activity] = await Promise.all([
     getContactDetail(id),
     getContactFormOptions(),
+    getContactFollowups(id),
+    getContactActivity(id),
   ]);
 
   if (!contact) {
@@ -150,6 +155,14 @@ export default async function CardDetailPage({
                 {contact.sourceType}
               </dd>
             </div>
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                협력 수위
+              </dt>
+              <dd className="mt-2 text-sm text-slate-900">
+                {contact.cooperationLevel || "-"}
+              </dd>
+            </div>
             <div className="rounded-2xl bg-slate-50 p-4 sm:col-span-2">
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 태그
@@ -257,6 +270,34 @@ export default async function CardDetailPage({
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-950">최근 변경 이력</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          어떤 담당자가 언제 수정하거나 OCR/검수/팔로업을 처리했는지 확인할 수 있습니다.
+        </p>
+        <div className="mt-5 space-y-3">
+          {activity.map((item) => (
+            <div key={item.id} className="rounded-2xl bg-slate-50 px-4 py-4 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="font-semibold text-slate-950">{item.summary}</div>
+                <div className="text-xs text-slate-500">
+                  {new Date(item.createdAt).toLocaleString("ko-KR")}
+                </div>
+              </div>
+              <div className="mt-2 text-slate-600">
+                담당자 {item.actorName}
+                {item.actorEmail ? ` · ${item.actorEmail}` : ""}
+              </div>
+            </div>
+          ))}
+          {activity.length === 0 ? (
+            <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">
+              아직 저장된 변경 이력이 없습니다.
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-950">연락처 정보 수정</h2>
         <p className="mt-2 text-sm leading-6 text-slate-600">
           OCR 결과나 엑셀 매핑이 완벽하지 않은 경우 여기서 직접 보정하면 됩니다.
@@ -276,6 +317,7 @@ export default async function CardDetailPage({
               address: contact.address,
               city: contact.city,
               country: contact.country,
+              cooperationLevel: contact.cooperationLevel,
               categoryId: contact.categoryId,
               ownerStaffId: contact.ownerStaffId,
               isInfluencer: contact.isInfluencer,
@@ -286,6 +328,114 @@ export default async function CardDetailPage({
             }}
           />
         </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+        <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-950">접촉 이력 / 팔로업</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            마지막 연락 내용과 다음 후속 일정을 기록해 두면 다음 행사 준비 때 우선순위 추천에도 반영됩니다.
+          </p>
+
+          <div className="mt-5 space-y-3">
+            {followups.map((followup) => (
+              <div key={followup.id} className="rounded-2xl border border-slate-200 p-4 text-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="font-semibold text-slate-900">{followup.summary}</div>
+                    <div className="mt-1 text-slate-600">
+                      {followup.channel} · {followup.status}
+                      {followup.ownerLabel ? ` · ${followup.ownerLabel}` : ""}
+                    </div>
+                    {followup.notes ? (
+                      <div className="mt-2 text-slate-500">{followup.notes}</div>
+                    ) : null}
+                    <div className="mt-2 text-xs text-slate-500">
+                      다음 일정{" "}
+                      {followup.nextFollowUpAt
+                        ? new Date(followup.nextFollowUpAt).toLocaleString("ko-KR")
+                        : "-"}
+                    </div>
+                  </div>
+                  {followup.status !== "done" ? (
+                    <form action={completeContactFollowupAction}>
+                      <input type="hidden" name="followupId" value={followup.id} />
+                      <input type="hidden" name="contactId" value={contact.id} />
+                      <input type="hidden" name="redirectTo" value={`/cards/${contact.id}`} />
+                      <button
+                        type="submit"
+                        className="rounded-full border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700"
+                      >
+                        완료 처리
+                      </button>
+                    </form>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+            {followups.length === 0 ? (
+              <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">
+                아직 접촉 이력이 없습니다.
+              </div>
+            ) : null}
+          </div>
+        </article>
+
+        <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-950">새 팔로업 추가</h2>
+          <form action={createContactFollowupAction} className="mt-5 space-y-3">
+            <input type="hidden" name="contactId" value={contact.id} />
+            <input type="hidden" name="redirectTo" value={`/cards/${contact.id}`} />
+            <div className="grid gap-3 md:grid-cols-2">
+              <input
+                name="summary"
+                placeholder="요약"
+                className="rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm"
+              />
+              <input
+                name="ownerLabel"
+                placeholder="담당자 메모 작성자"
+                className="rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm"
+              />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <select
+                name="channel"
+                className="rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm"
+              >
+                <option value="email">email</option>
+                <option value="phone">phone</option>
+                <option value="meeting">meeting</option>
+                <option value="event">event</option>
+              </select>
+              <select
+                name="status"
+                className="rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm"
+              >
+                <option value="planned">planned</option>
+                <option value="in_progress">in_progress</option>
+                <option value="done">done</option>
+              </select>
+            </div>
+            <input
+              name="nextFollowUpAt"
+              type="datetime-local"
+              className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm"
+            />
+            <textarea
+              name="notes"
+              rows={4}
+              placeholder="상세 메모"
+              className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm"
+            />
+            <button
+              type="submit"
+              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+            >
+              팔로업 저장
+            </button>
+          </form>
+        </article>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">

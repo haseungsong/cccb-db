@@ -75,6 +75,9 @@ export default function UploadPage() {
           휴대폰 브라우저에서 이 화면을 열고 바로 촬영하거나 파일을 선택하면,
           이미지가 OCR로 분석되고 브라질 포르투갈어 기준으로 결과를 정리합니다.
         </p>
+        <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
+          업로드한 명함은 현재 로그인한 담당자 계정으로 생성 이력이 남습니다.
+        </p>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">

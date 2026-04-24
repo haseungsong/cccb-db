@@ -4,12 +4,17 @@ import {
   getEventsOverview,
   getSearchableContacts,
 } from "@/lib/contacts/queries";
+import { getEventInviteRecommendations } from "@/lib/ops/queries";
 
 export default async function EventsPage() {
-  const [events, contacts] = await Promise.all([
+  const [events, contacts, recommendations] = await Promise.all([
     getEventsOverview(),
     getSearchableContacts(),
+    getEventInviteRecommendations(5),
   ]);
+  const recommendationMap = new Map(
+    recommendations.map((item) => [item.eventId, item.recommendations]),
+  );
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-8 px-6 py-10">
@@ -173,6 +178,44 @@ export default async function EventsPage() {
                     아직 연결된 참석자가 없습니다.
                   </div>
                 ) : null}
+              </div>
+
+              <div className="mt-6 rounded-2xl bg-cyan-50 p-4">
+                <h3 className="text-sm font-semibold text-cyan-950">우선 초청 추천</h3>
+                <p className="mt-2 text-sm leading-6 text-cyan-900">
+                  협력 수위, 과거 참석률, 담당자/팔로업 메모를 반영해 먼저 초청하면 좋은 후보를 정렬했습니다.
+                </p>
+                <div className="mt-4 space-y-3">
+                  {(recommendationMap.get(event.id) ?? []).map((candidate) => (
+                    <Link
+                      key={`${event.id}-${candidate.contactId}`}
+                      href={`/cards/${candidate.contactId}`}
+                      className="block rounded-2xl bg-white px-4 py-3 text-sm transition hover:bg-slate-50"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-slate-950">{candidate.name}</div>
+                          <div className="mt-1 text-slate-600">
+                            {candidate.company || "기관 미상"}
+                            {candidate.ownerStaff ? ` · 담당 ${candidate.ownerStaff}` : ""}
+                            {candidate.cooperationLevel ? ` · 협력 ${candidate.cooperationLevel}` : ""}
+                          </div>
+                        </div>
+                        <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-semibold text-cyan-900">
+                          점수 {candidate.score}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">
+                        {candidate.reasons.join(" / ")}
+                      </div>
+                    </Link>
+                  ))}
+                  {(recommendationMap.get(event.id) ?? []).length === 0 ? (
+                    <div className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-500">
+                      아직 추천 후보를 계산할 충분한 데이터가 없습니다.
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </article>
           ))}

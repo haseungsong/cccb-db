@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { extractCooperationLevelFromRecord } from "@/lib/contacts/cooperation";
 import { normalizePhone, normalizeText } from "@/lib/contacts/mergeContact";
 
 function isMissingTableError(error: unknown) {
@@ -8,6 +9,18 @@ function isMissingTableError(error: unknown) {
 
   const candidate = error as { code?: string; message?: string };
   return candidate.code === "PGRST205" || candidate.message?.includes("schema cache") === true;
+}
+
+function isMissingColumnError(error: unknown, columnName: string) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: string; message?: string };
+  return (
+    candidate.code === "42703" &&
+    candidate.message?.toLowerCase().includes(columnName.toLowerCase()) === true
+  );
 }
 
 type ContactRow = {
@@ -21,6 +34,7 @@ type ContactRow = {
   address: string | null;
   city: string | null;
   country: string | null;
+  cooperation_level: string | null;
   category_id: string | null;
   owner_staff_id: string | null;
   is_influencer: boolean;
@@ -115,6 +129,7 @@ export type ContactSearchFilters = {
   hasCard?: string;
   hasPhoto?: string;
   status?: string;
+  cooperation?: string;
 };
 
 export type ContactListItem = {
@@ -129,6 +144,7 @@ export type ContactListItem = {
   phone: string;
   city: string;
   website: string;
+  cooperationLevel: string;
   isInfluencer: boolean;
   isMedia: boolean;
   sourceType: string;
@@ -226,6 +242,16 @@ export type DashboardInsights = {
   recentContacts: ContactListItem[];
 };
 
+export type ContactSearchSuggestion = {
+  id: string;
+  name: string;
+  company: string;
+  category: string;
+  ownerStaff: string;
+  cooperationLevel: string;
+  matchedOn: string;
+};
+
 async function createSignedUrl(
   bucket: string,
   path: string | null,
@@ -285,10 +311,67 @@ function countByLabel(values: string[]) {
     .slice(0, 8);
 }
 
+function getSuggestionMatchInfo(contact: ContactListItem, query: string) {
+  const normalizedQuery = normalizeText(query);
+  const candidates = [
+    { label: "이름", value: contact.name, score: 120 },
+    { label: "기관", value: contact.company, score: 95 },
+    { label: "이메일", value: contact.email, score: 90 },
+    { label: "전화번호", value: contact.phone, score: 88 },
+    { label: "행사", value: contact.events.join(" "), score: 84 },
+    { label: "태그", value: contact.tags.join(" "), score: 80 },
+    { label: "원본 시트", value: contact.sourceSheets.join(" "), score: 76 },
+    { label: "협력 수위", value: contact.cooperationLevel, score: 74 },
+  ];
+
+  for (const candidate of candidates) {
+    const normalizedValue = normalizeText(candidate.value);
+    if (!normalizedValue) {
+      continue;
+    }
+
+    if (normalizedValue === normalizedQuery) {
+      return { matchedOn: candidate.label, score: candidate.score + 20 };
+    }
+
+    if (normalizedValue.startsWith(normalizedQuery)) {
+      return { matchedOn: candidate.label, score: candidate.score + 10 };
+    }
+
+    if (normalizedValue.includes(normalizedQuery)) {
+      return { matchedOn: candidate.label, score: candidate.score };
+    }
+  }
+
+  if (includesSearch(contact.searchableText, query)) {
+    return { matchedOn: "통합 검색", score: 40 };
+  }
+
+  return null;
+}
+
 async function loadContactDataset() {
   const supabase = createSupabaseAdminClient();
+  const contactsWithCooperation = await supabase
+    .from("contacts")
+    .select(
+      "id, name, company, job_title, email, phone, website, address, city, country, cooperation_level, category_id, owner_staff_id, is_influencer, is_media, contact_status, primary_source_type, created_at, updated_at",
+    )
+    .order("updated_at", { ascending: false });
+
+  const contactsResult = isMissingColumnError(
+    contactsWithCooperation.error,
+    "cooperation_level",
+  )
+    ? await supabase
+        .from("contacts")
+        .select(
+          "id, name, company, job_title, email, phone, website, address, city, country, category_id, owner_staff_id, is_influencer, is_media, contact_status, primary_source_type, created_at, updated_at",
+        )
+        .order("updated_at", { ascending: false })
+    : contactsWithCooperation;
+
   const [
-    contactsResult,
     categoriesResult,
     staffResult,
     eventsResult,
@@ -300,12 +383,6 @@ async function loadContactDataset() {
     contactTagsResult,
     eventTagsResult,
   ] = await Promise.all([
-    supabase
-      .from("contacts")
-      .select(
-        "id, name, company, job_title, email, phone, website, address, city, country, category_id, owner_staff_id, is_influencer, is_media, contact_status, primary_source_type, created_at, updated_at",
-      )
-      .order("updated_at", { ascending: false }),
     supabase.from("categories").select("id, name").order("sort_order", { ascending: true }),
     supabase.from("staff_members").select("id, name").order("name", { ascending: true }),
     supabase
@@ -350,7 +427,10 @@ async function loadContactDataset() {
   }
 
   return {
-    contacts: (contactsResult.data ?? []) as ContactRow[],
+    contacts: (contactsResult.data ?? []).map((row) => ({
+      cooperation_level: null,
+      ...row,
+    })) as ContactRow[],
     categories: (categoriesResult.data ?? []) as CategoryRow[],
     staffMembers: (staffResult.data ?? []) as StaffRow[],
     events: (eventsResult.data ?? []) as EventRow[],
@@ -439,6 +519,12 @@ function buildContactListItems(dataset: Dataset) {
     const businessCards = businessCardsMap.get(contact.id) ?? [];
     const profileImages = contactImagesMap.get(contact.id) ?? [];
     const tags = Array.from(new Set(contactTagsMap.get(contact.id) ?? [])).sort();
+    const cooperationLevel =
+      contact.cooperation_level ||
+      legacyRows
+        .map((row) => extractCooperationLevelFromRecord(row.raw_json))
+        .find(Boolean) ||
+      "";
     const legacyText = legacyRows.flatMap((row) =>
       flattenRawJson(row.raw_json).map(({ key, value }) => `${key}: ${value}`),
     );
@@ -455,6 +541,7 @@ function buildContactListItems(dataset: Dataset) {
       phone: contact.phone ?? "",
       city: contact.city ?? "",
       website: contact.website ?? "",
+      cooperationLevel,
       isInfluencer: contact.is_influencer,
       isMedia: contact.is_media,
       sourceType: contact.primary_source_type,
@@ -479,6 +566,7 @@ function buildContactListItems(dataset: Dataset) {
         contact.city,
         category,
         ownerStaff,
+        cooperationLevel,
         events,
         sourceSheets,
         tags,
@@ -545,6 +633,14 @@ function applyContactFilters(
       return false;
     }
 
+    if (
+      filters.cooperation &&
+      filters.cooperation !== "all" &&
+      contact.cooperationLevel !== filters.cooperation
+    ) {
+      return false;
+    }
+
     if (!matchesToggle(contact.isInfluencer, filters.influencer)) {
       return false;
     }
@@ -569,6 +665,47 @@ export async function getSearchableContacts(filters: ContactSearchFilters = {}) 
   const dataset = await loadContactDataset();
   const contacts = buildContactListItems(dataset);
   return applyContactFilters(contacts, filters);
+}
+
+export async function getContactSearchSuggestions(query: string, limit = 8) {
+  const trimmedQuery = query.trim();
+
+  if (!trimmedQuery) {
+    return [] as ContactSearchSuggestion[];
+  }
+
+  const contacts = await getSearchableContacts({ query: trimmedQuery });
+
+  return contacts
+    .map((contact) => {
+      const matchInfo = getSuggestionMatchInfo(contact, trimmedQuery);
+      if (!matchInfo) {
+        return null;
+      }
+
+      return {
+        id: contact.id,
+        name: contact.name,
+        company: contact.company,
+        category: contact.category,
+        ownerStaff: contact.ownerStaff,
+        cooperationLevel: contact.cooperationLevel,
+        matchedOn: matchInfo.matchedOn,
+        score: matchInfo.score,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => (right?.score ?? 0) - (left?.score ?? 0))
+    .slice(0, limit)
+    .map((item) => ({
+      id: item!.id,
+      name: item!.name,
+      company: item!.company,
+      category: item!.category,
+      ownerStaff: item!.ownerStaff,
+      cooperationLevel: item!.cooperationLevel,
+      matchedOn: item!.matchedOn,
+    }));
 }
 
 export async function getContactDetail(contactId: string) {
@@ -653,6 +790,9 @@ export async function getSearchFacets() {
 
   return {
     categories: Array.from(new Set(contacts.map((contact) => contact.category).filter(Boolean))).sort(),
+    cooperationLevels: Array.from(
+      new Set(contacts.map((contact) => contact.cooperationLevel).filter(Boolean)),
+    ).sort(),
     owners: Array.from(new Set(contacts.map((contact) => contact.ownerStaff).filter(Boolean))).sort(),
     events: Array.from(new Set(contacts.flatMap((contact) => contact.events).filter(Boolean))).sort(),
     sources: Array.from(new Set(contacts.flatMap((contact) => contact.sourceSheets).filter(Boolean))).sort(),

@@ -12,6 +12,7 @@ type RawSearchParams = {
   hasCard?: string;
   hasPhoto?: string;
   status?: string;
+  cooperation?: string;
 };
 
 function normalizeFilterValue(value: string | null | undefined, fallback = "all") {
@@ -31,6 +32,7 @@ export function normalizeContactSearchFilters(params: RawSearchParams): ContactS
     hasCard: normalizeFilterValue(params.hasCard),
     hasPhoto: normalizeFilterValue(params.hasPhoto),
     status: normalizeFilterValue(params.status),
+    cooperation: normalizeFilterValue(params.cooperation),
   };
 }
 
@@ -52,6 +54,7 @@ export function buildContactSearchParams(filters: ContactSearchFilters) {
     "hasCard",
     "hasPhoto",
     "status",
+    "cooperation",
   ];
 
   selectiveFilters.forEach((key) => {
@@ -77,6 +80,7 @@ export function getFilterSummary(filters: ContactSearchFilters) {
     ["언론", filters.media !== "all" ? filters.media : undefined],
     ["명함", filters.hasCard !== "all" ? filters.hasCard : undefined],
     ["사진", filters.hasPhoto !== "all" ? filters.hasPhoto : undefined],
+    ["협력 수위", filters.cooperation !== "all" ? filters.cooperation : undefined],
   ];
 
   return labels

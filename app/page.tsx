@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SearchAutocomplete } from "@/app/_components/search-autocomplete";
 import {
   getDashboardInsights,
   getDuplicateCandidates,
@@ -47,6 +48,12 @@ export default async function Home() {
       href: "/review",
       accent: "bg-white text-slate-900 border border-slate-200",
     },
+    {
+      title: "발송 센터",
+      description: "저장된 대상 리스트와 대표 메일 발송, CSV 공유를 관리할 때",
+      href: "/broadcasts",
+      accent: "bg-white text-slate-900 border border-slate-200",
+    },
   ];
   const tutorialSteps = [
     "홈에서 오늘 처리할 항목을 보고 먼저 `검수 대기`, `담당자 미지정`, `중복 후보`를 확인합니다.",
@@ -77,6 +84,11 @@ export default async function Home() {
       description: "현재 DB 구성과 운영상 빈틈을 요약해서 보는 대시보드입니다.",
       href: "/insights",
     },
+    {
+      title: "발송",
+      description: "저장된 대상 리스트, 메일 발송, WhatsApp 테스트 준비를 다룹니다.",
+      href: "/broadcasts",
+    },
   ];
   const helpfulLinks = [
     {
@@ -102,33 +114,77 @@ export default async function Home() {
   ];
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-8 px-6 py-8">
-      <section className="overflow-hidden rounded-[2rem] bg-slate-950 text-white shadow-xl">
-        <div className="grid gap-8 px-8 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:py-12">
+    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
+      <section className="overflow-hidden rounded-[1.75rem] bg-slate-950 text-white shadow-xl sm:rounded-[2rem]">
+        <div className="grid gap-8 px-5 py-7 sm:px-8 sm:py-10 lg:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:py-12">
           <div className="space-y-6">
             <div className="space-y-4">
               <p className="text-sm font-semibold uppercase tracking-[0.24em] text-cyan-300">
                 CCCB Contact Hub
               </p>
-              <h1 className="max-w-4xl text-4xl font-semibold tracking-tight lg:text-5xl">
+              <h1 className="max-w-4xl text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
                 처음 쓰는 사람도 바로 이해하는 문화원 연락처 운영 홈
               </h1>
-              <p className="max-w-3xl text-base leading-7 text-slate-300">
+              <p className="max-w-3xl text-sm leading-7 text-slate-200 sm:text-base">
                 연락처 수집, OCR, 행사 운영, 중복 검수, 내보내기까지 끊기지 않게
                 연결된 시작 화면입니다. 아래 순서대로만 쓰면 처음 보는 사람도
                 주요 기능을 모두 활용할 수 있습니다.
               </p>
             </div>
 
+            <form
+              action="/cards"
+              className="rounded-[1.5rem] border border-white/15 bg-white/8 p-4 backdrop-blur"
+            >
+              <div className="grid gap-3 lg:grid-cols-[1.6fr_1fr_1fr_auto]">
+                <SearchAutocomplete
+                  placeholder="처음부터 바로 검색: 이름, 기관, 행사, 이메일, 전화"
+                  inputClassName="w-full rounded-2xl border border-white/15 bg-white px-4 py-4 text-sm text-slate-950 outline-none ring-0 placeholder:text-slate-500"
+                  resultHintClassName="mt-2 text-xs text-slate-300"
+                />
+                <select
+                  name="category"
+                  className="rounded-2xl border border-white/15 bg-white px-4 py-4 text-sm font-medium text-slate-900"
+                >
+                  <option value="all">전체 카테고리</option>
+                  {facets.categories.slice(0, 20).map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  name="cooperation"
+                  className="rounded-2xl border border-white/15 bg-white px-4 py-4 text-sm font-medium text-slate-900"
+                >
+                  <option value="all">전체 협력 수위</option>
+                  {(facets.cooperationLevels ?? []).slice(0, 20).map((level) => (
+                    <option key={level} value={level}>
+                      {level}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  className="rounded-2xl bg-cyan-300 px-5 py-4 text-sm font-semibold text-slate-950 shadow-sm hover:bg-cyan-200"
+                >
+                  바로 찾기
+                </button>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-200">
+                홈에서 바로 검색한 뒤 `연락처` 화면에서 태그, 행사, 담당자, 명함 유무까지 더 좁혀서 찾을 수 있습니다.
+              </p>
+            </form>
+
             <div className="grid gap-3 sm:grid-cols-2">
               {quickActions.map((action) => (
                 <Link
                   key={action.title}
                   href={action.href}
-                  className={`rounded-3xl px-5 py-5 transition hover:-translate-y-0.5 ${action.accent}`}
+                  className={`rounded-3xl px-5 py-5 shadow-sm transition hover:-translate-y-0.5 ${action.accent}`}
                 >
                   <div className="text-base font-semibold">{action.title}</div>
-                  <div className="mt-2 text-sm leading-6 opacity-90">
+                  <div className="mt-2 text-sm leading-6 opacity-95">
                     {action.description}
                   </div>
                 </Link>
@@ -142,21 +198,21 @@ export default async function Home() {
                 key={stat.label}
                 className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur"
               >
-                <p className="text-sm text-slate-300">{stat.label}</p>
-                <p className="mt-3 text-4xl font-semibold text-white">{stat.value}</p>
+                <p className="text-sm text-slate-200">{stat.label}</p>
+                <p className="mt-3 text-3xl font-semibold text-white sm:text-4xl">{stat.value}</p>
               </article>
             ))}
             <article className="sm:col-span-2 rounded-3xl border border-cyan-400/20 bg-cyan-400/10 p-5">
-              <p className="text-sm font-semibold text-cyan-200">오늘 먼저 볼 것</p>
+              <p className="text-sm font-semibold text-cyan-100">오늘 먼저 볼 것</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {helpfulLinks.map((item) => (
                   <Link
                     key={item.label}
                     href={item.href}
-                    className="rounded-2xl bg-white/10 px-4 py-3 text-sm transition hover:bg-white/15"
+                    className="rounded-2xl bg-white/12 px-4 py-3 text-sm transition hover:bg-white/20"
                   >
                     <div className="font-medium text-white">{item.label}</div>
-                    <div className="mt-1 text-cyan-100">{item.count}건</div>
+                    <div className="mt-1 text-cyan-50">{item.count}건</div>
                   </Link>
                 ))}
               </div>

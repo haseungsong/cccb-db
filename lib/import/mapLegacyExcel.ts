@@ -1,3 +1,4 @@
+import { extractCooperationLevelFromRecord } from "@/lib/contacts/cooperation";
 import * as XLSX from "xlsx";
 
 export type LegacyPreviewRow = {
@@ -18,6 +19,7 @@ export type LegacyMappedRow = LegacyPreviewRow & {
   address: string;
   city: string;
   eventName: string;
+  cooperationLevel: string;
   isInfluencer: boolean;
   isMedia: boolean;
   rawRecord: Record<string, unknown>;
@@ -618,6 +620,7 @@ export function extractLegacyWorkbookData(buffer: Buffer) {
         address: draft.address,
         city: draft.city,
         eventName,
+        cooperationLevel: extractCooperationLevelFromRecord(rawRecord),
         isInfluencer: flags.isInfluencer,
         isMedia: flags.isMedia,
         rawRecord,

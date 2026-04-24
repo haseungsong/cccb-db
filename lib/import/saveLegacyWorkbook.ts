@@ -9,6 +9,7 @@ import {
   scoreContactMatch,
   type ExistingContactCandidate,
 } from "@/lib/contacts/mergeContact";
+import { extractCooperationLevelFromRecord } from "@/lib/contacts/cooperation";
 import type { NormalizedCard } from "@/lib/validators/card";
 
 type AdminClient = SupabaseClient;
@@ -19,6 +20,7 @@ type ContactRow = ExistingContactCandidate & {
   address: string | null;
   city: string | null;
   country: string | null;
+  cooperation_level: string | null;
   is_influencer: boolean;
   is_media: boolean;
 };
@@ -60,6 +62,7 @@ type PendingContact = {
     city: string | null;
     category_id: string | null;
     owner_staff_id: string | null;
+    cooperation_level: string | null;
     is_influencer: boolean;
     is_media: boolean;
     primary_source_type: string;
@@ -77,6 +80,7 @@ type ContactMergeBase = {
   city?: string | null;
   category_id?: string | null;
   owner_staff_id?: string | null;
+  cooperation_level?: string | null;
   is_influencer: boolean;
   is_media: boolean;
   primary_source_type?: string;
@@ -124,6 +128,8 @@ function buildContactPayload(
     city: row.city || null,
     category_id: categoryId,
     owner_staff_id: ownerStaffId,
+    cooperation_level:
+      row.cooperationLevel || extractCooperationLevelFromRecord(row.rawRecord) || null,
     is_influencer: row.isInfluencer,
     is_media: row.isMedia,
     primary_source_type: "legacy_import",
@@ -145,6 +151,7 @@ function mergeContactPayload(
     city: incoming.city || base.city || null,
     category_id: incoming.category_id || base.category_id || null,
     owner_staff_id: incoming.owner_staff_id || base.owner_staff_id || null,
+    cooperation_level: incoming.cooperation_level || base.cooperation_level || null,
     is_influencer: base.is_influencer || incoming.is_influencer,
     is_media: base.is_media || incoming.is_media,
     primary_source_type:
@@ -474,7 +481,7 @@ async function mergeDuplicateLegacyContacts(supabase: AdminClient) {
   const contactsResult = await supabase
     .from("contacts")
     .select(
-      "id, name, company, email, phone, job_title, website, address, city, country, is_influencer, is_media",
+      "id, name, company, email, phone, job_title, website, address, city, country, cooperation_level, is_influencer, is_media",
     )
     .eq("primary_source_type", "legacy_import");
 
@@ -519,6 +526,7 @@ async function mergeDuplicateLegacyContacts(supabase: AdminClient) {
         city: contact.city ?? null,
         category_id: null,
         owner_staff_id: null,
+        cooperation_level: contact.cooperation_level ?? null,
         is_influencer: contact.is_influencer,
         is_media: contact.is_media,
         primary_source_type: "legacy_import",
@@ -694,7 +702,7 @@ export async function importLegacyWorkbookToSupabase(
   const existingContactsResult = await supabase
     .from("contacts")
     .select(
-      "id, name, company, email, phone, job_title, website, address, city, country, is_influencer, is_media",
+      "id, name, company, email, phone, job_title, website, address, city, country, cooperation_level, is_influencer, is_media",
     );
 
   if (existingContactsResult.error) {

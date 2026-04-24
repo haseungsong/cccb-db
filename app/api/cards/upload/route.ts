@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getOptionalActorContext } from "@/lib/auth/actor";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createPreviewImage } from "@/lib/image/prepareImage";
 import { runGoogleVisionOCR } from "@/lib/ocr/googleVision";
@@ -12,6 +13,7 @@ type ContactRecord = ExistingContactCandidate & {
   address: string | null;
   city: string | null;
   country: string | null;
+  owner_staff_id: string | null;
   is_influencer: boolean;
   is_media: boolean;
 };
@@ -20,9 +22,30 @@ function mergeField(incoming: string, existing: string | null) {
   return incoming || existing || null;
 }
 
+function isMissingColumnError(error: unknown, columnName: string) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: string; message?: string };
+  return (
+    candidate.code === "42703" &&
+    candidate.message?.toLowerCase().includes(columnName.toLowerCase()) === true
+  );
+}
+
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const actor = await getOptionalActorContext();
+
+  if (!actor) {
+    return NextResponse.json(
+      { ok: false, message: "로그인 후 OCR 업로드를 사용할 수 있습니다." },
+      { status: 401 },
+    );
+  }
+
   if (!hasConfiguredServerEnv()) {
     return NextResponse.json(
       {
@@ -99,7 +122,7 @@ export async function POST(request: Request) {
   const contactsQuery = await supabase
     .from("contacts")
     .select(
-      "id, name, company, email, phone, job_title, website, address, city, country, is_influencer, is_media",
+      "id, name, company, email, phone, job_title, website, address, city, country, owner_staff_id, is_influencer, is_media",
     )
     .limit(500);
   const candidates = (contactsQuery.data ?? []) as ContactRecord[];
@@ -146,6 +169,7 @@ export async function POST(request: Request) {
           address: mergeField(normalized.address, matched.address),
           city: mergeField(normalized.city, matched.city),
           country: mergeField(normalized.country, matched.country),
+          owner_staff_id: matched.owner_staff_id || actor.staffMemberId,
           is_influencer: matched.is_influencer,
           is_media: matched.is_media,
           primary_source_type: "business_card",
@@ -176,7 +200,9 @@ export async function POST(request: Request) {
         address: normalized.address || null,
         city: normalized.city || null,
         country: normalized.country || "Brazil",
+        owner_staff_id: actor.staffMemberId,
         primary_source_type: "business_card",
+        created_by: actor.userId,
       })
       .select("id")
       .single();
@@ -192,20 +218,39 @@ export async function POST(request: Request) {
     saveAction = "created-contact";
   }
 
-  const businessCardInsert = await supabase
+  const businessCardPayload = {
+    contact_id: savedContactId,
+    image_original_path: originalPath,
+    image_preview_path: previewPath,
+    ocr_raw_text: rawText,
+    extracted_json: normalized,
+    language_hint: normalized.languageHint || "pt-BR",
+    review_status: mergeSuggestion.action === "needs-review" ? "needs_review" : "captured",
+    created_by: actor.userId,
+  };
+  const businessCardInsertWithActor = await supabase
     .from("business_cards")
-    .insert({
-      contact_id: savedContactId,
-      image_original_path: originalPath,
-      image_preview_path: previewPath,
-      ocr_raw_text: rawText,
-      extracted_json: normalized,
-      language_hint: normalized.languageHint || "pt-BR",
-      review_status:
-        mergeSuggestion.action === "needs-review" ? "needs_review" : "captured",
-    })
+    .insert(businessCardPayload)
     .select("id")
     .single();
+  const businessCardInsert = isMissingColumnError(
+    businessCardInsertWithActor.error,
+    "created_by",
+  )
+    ? await supabase
+        .from("business_cards")
+        .insert({
+          contact_id: savedContactId,
+          image_original_path: originalPath,
+          image_preview_path: previewPath,
+          ocr_raw_text: rawText,
+          extracted_json: normalized,
+          language_hint: normalized.languageHint || "pt-BR",
+          review_status: mergeSuggestion.action === "needs-review" ? "needs_review" : "captured",
+        })
+        .select("id")
+        .single()
+    : businessCardInsertWithActor;
 
   if (businessCardInsert.error) {
     return NextResponse.json(
@@ -215,6 +260,21 @@ export async function POST(request: Request) {
   }
 
   savedBusinessCardId = businessCardInsert.data.id;
+
+  if (savedContactId) {
+    await supabase.from("contact_audit_logs").insert({
+      contact_id: savedContactId,
+      actor_id: actor.userId,
+      action:
+        mergeSuggestion.action === "auto-merge" ? "business-card-auto-merge" : "business-card-create",
+      payload: {
+        businessCardId: savedBusinessCardId,
+        actorDisplayName: actor.displayName,
+        actorTeamName: actor.teamName || null,
+        mergeAction: mergeSuggestion.action,
+      },
+    });
+  }
 
   return NextResponse.json({
     ok: true,

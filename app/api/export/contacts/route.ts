@@ -17,6 +17,7 @@ export async function GET(request: Request) {
     hasCard: searchParams.get("hasCard") ?? undefined,
     hasPhoto: searchParams.get("hasPhoto") ?? undefined,
     status: searchParams.get("status") ?? undefined,
+    cooperation: searchParams.get("cooperation") ?? undefined,
   });
 
   const contacts = await getSearchableContacts(filters);

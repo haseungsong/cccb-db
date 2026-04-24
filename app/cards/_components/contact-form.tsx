@@ -22,6 +22,7 @@ type ContactFormProps = {
     address: string;
     city: string;
     country: string;
+    cooperationLevel: string;
     categoryId: string;
     ownerStaffId: string;
     isInfluencer: boolean;
@@ -109,6 +110,15 @@ export function ContactForm({ mode, options, initialValues }: ContactFormProps) 
             className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3"
           />
         </label>
+        <label className="space-y-2 text-sm">
+          <span className="font-medium text-slate-700">문화원 협력 수위/주요도</span>
+          <input
+            name="cooperationLevel"
+            defaultValue={initialValues?.cooperationLevel ?? ""}
+            placeholder="예: 매우 우호적, 우선초청, 핵심 파트너"
+            className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3"
+          />
+        </label>
         <label className="space-y-2 text-sm md:col-span-2">
           <span className="font-medium text-slate-700">주소</span>
           <input
@@ -177,6 +187,11 @@ export function ContactForm({ mode, options, initialValues }: ContactFormProps) 
           </select>
         </label>
       </div>
+
+      <p className="text-xs leading-6 text-slate-500">
+        담당자를 비워 두면 현재 로그인한 사용자 기준으로 자동 연결됩니다. 저장/수정 이력도
+        로그인 계정으로 기록됩니다.
+      </p>
 
       <label className="block space-y-2 text-sm">
         <span className="font-medium text-slate-700">태그</span>

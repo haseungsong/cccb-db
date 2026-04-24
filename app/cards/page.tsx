@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { SearchAutocomplete } from "@/app/_components/search-autocomplete";
 import { sendContactExportEmailAction } from "@/app/actions";
 import { getSearchableContacts, getSearchFacets } from "@/lib/contacts/queries";
 import { buildContactSearchParams, normalizeContactSearchFilters } from "@/lib/contacts/search";
 
 type SelectFilterConfig = {
-  name: "category" | "owner" | "event" | "source" | "tag" | "status";
+  name: "category" | "owner" | "event" | "source" | "tag" | "status" | "cooperation";
   label: string;
   options: string[];
 };
@@ -24,6 +25,7 @@ export default async function CardsPage({
     hasCard?: string;
     hasPhoto?: string;
     status?: string;
+    cooperation?: string;
     exportStatus?: string;
     emailedTo?: string;
   }>;
@@ -43,10 +45,15 @@ export default async function CardsPage({
     { name: "source", label: "원본 시트", options: ["all", ...facets.sources] },
     { name: "tag", label: "태그", options: ["all", ...facets.tags] },
     { name: "status", label: "상태", options: ["all", ...facets.statuses] },
+    {
+      name: "cooperation",
+      label: "협력 수위",
+      options: ["all", ...(facets.cooperationLevels ?? [])],
+    },
   ];
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-6 py-10">
+    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-4 py-6 sm:px-6 sm:py-10">
       <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-3xl font-semibold text-slate-950">
           통합 연락처 목록
@@ -58,12 +65,12 @@ export default async function CardsPage({
         </p>
 
         <form className="mt-6 grid gap-3 lg:grid-cols-3">
-          <input
-            type="search"
-            name="q"
+          <SearchAutocomplete
             defaultValue={filters.query}
             placeholder="이름, 기관, 이메일, 전화, 행사명, 원본 시트 텍스트까지 검색"
-            className="lg:col-span-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-800 outline-none ring-0"
+            panelClassName="lg:col-span-3"
+            inputClassName="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-500"
+            resultHintClassName="mt-2 text-xs text-slate-500"
           />
           {selectFilters.map(({ name, label, options }) => (
             <label key={name} className="space-y-2 text-sm">
@@ -71,7 +78,7 @@ export default async function CardsPage({
               <select
                 name={name}
                 defaultValue={String(filters[name as keyof typeof filters] ?? "all")}
-                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800"
+                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900"
               >
                 {(options as string[]).map((option) => (
                   <option key={option} value={option}>
@@ -92,7 +99,7 @@ export default async function CardsPage({
               <select
                 name={name}
                 defaultValue={String(filters[name as keyof typeof filters] ?? "all")}
-                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800"
+                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900"
               >
                 <option value="all">전체</option>
                 <option value="yes">예</option>
@@ -100,22 +107,22 @@ export default async function CardsPage({
               </select>
             </label>
           ))}
-          <div className="flex items-end gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <button
               type="submit"
-              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm"
             >
               필터 적용
             </button>
             <Link
               href="/cards"
-              className="rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700"
+              className="rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800"
             >
               초기화
             </Link>
             <Link
               href="/cards/new"
-              className="rounded-full border border-cyan-300 bg-cyan-50 px-5 py-3 text-sm font-semibold text-cyan-700"
+              className="rounded-full border border-cyan-300 bg-cyan-100 px-5 py-3 text-sm font-semibold text-cyan-900"
             >
               연락처 추가
             </Link>
@@ -131,7 +138,7 @@ export default async function CardsPage({
                   현재 필터 상태 그대로 CSV로 저장하거나 메일로 첨부 전송할 수 있습니다.
                 </p>
               </div>
-              <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-800">
                 결과 {contacts.length}건
               </span>
             </div>
@@ -155,10 +162,16 @@ export default async function CardsPage({
             <div className="mt-4 flex flex-wrap gap-3">
               <a
                 href={exportHref}
-                className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+                className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm"
               >
                 CSV 다운로드
               </a>
+              <Link
+                href={`/broadcasts?${exportParams.toString()}`}
+                className="rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800"
+              >
+                발송 센터로 이동
+              </Link>
             </div>
 
             <form action={sendContactExportEmailAction} className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
@@ -173,6 +186,7 @@ export default async function CardsPage({
               <input type="hidden" name="hasCard" value={filters.hasCard ?? "all"} />
               <input type="hidden" name="hasPhoto" value={filters.hasPhoto ?? "all"} />
               <input type="hidden" name="status" value={filters.status ?? "all"} />
+              <input type="hidden" name="cooperation" value={filters.cooperation ?? "all"} />
               <input
                 type="email"
                 name="recipient"
@@ -181,33 +195,33 @@ export default async function CardsPage({
               />
               <button
                 type="submit"
-                className="rounded-full border border-cyan-300 bg-cyan-50 px-5 py-3 text-sm font-semibold text-cyan-700"
+                className="rounded-full border border-cyan-300 bg-cyan-100 px-5 py-3 text-sm font-semibold text-cyan-900"
               >
                 이메일로 첨부 전송
               </button>
             </form>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-3">
-          <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
-            <p className="font-semibold text-slate-900">카테고리 예시</p>
-            <p className="mt-2 leading-6 text-slate-600">
-              {facets.categories.slice(0, 10).join(", ") || "-"}
-            </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">카테고리 예시</p>
+              <p className="mt-2 leading-6 text-slate-600">
+                {facets.categories.slice(0, 10).join(", ") || "-"}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">담당자 예시</p>
+              <p className="mt-2 leading-6 text-slate-600">
+                {facets.owners.slice(0, 10).join(", ") || "-"}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">태그 예시</p>
+              <p className="mt-2 leading-6 text-slate-600">
+                {facets.tags.slice(0, 10).join(", ") || "-"}
+              </p>
+            </div>
           </div>
-          <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
-            <p className="font-semibold text-slate-900">담당자 예시</p>
-            <p className="mt-2 leading-6 text-slate-600">
-              {facets.owners.slice(0, 10).join(", ") || "-"}
-            </p>
-          </div>
-          <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
-            <p className="font-semibold text-slate-900">태그 예시</p>
-            <p className="mt-2 leading-6 text-slate-600">
-              {facets.tags.slice(0, 10).join(", ") || "-"}
-            </p>
-          </div>
-        </div>
         </div>
       </section>
 
@@ -216,7 +230,7 @@ export default async function CardsPage({
           <Link
             key={contact.id}
             href={`/cards/${contact.id}`}
-            className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-cyan-300 hover:shadow-md"
+            className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-cyan-300 hover:shadow-md sm:p-5"
           >
             <div className="flex flex-col gap-5 md:flex-row md:items-center">
               <div className="flex items-center gap-4">
@@ -277,6 +291,11 @@ export default async function CardsPage({
                     #{tag}
                   </span>
                 ))}
+                {contact.cooperationLevel ? (
+                  <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
+                    협력 {contact.cooperationLevel}
+                  </span>
+                ) : null}
               </div>
             </div>
 
