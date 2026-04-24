@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 
-type LegacyPreviewRow = {
+export type LegacyPreviewRow = {
   sheetName: string;
   rowNumber: number;
   name: string;
@@ -10,6 +10,15 @@ type LegacyPreviewRow = {
   email: string;
   phone: string;
   imageHint: string;
+};
+
+export type LegacyMappedRow = LegacyPreviewRow & {
+  jobTitle: string;
+  socialUrl: string;
+  eventName: string;
+  isInfluencer: boolean;
+  isMedia: boolean;
+  rawRecord: Record<string, unknown>;
 };
 
 const fieldAliases = {
@@ -65,9 +74,41 @@ function detectHeaderRow(rows: unknown[][]) {
   return 0;
 }
 
-export function parseLegacyWorkbook(buffer: Buffer) {
+function inferEventName(sheetName: string) {
+  const masterSheets = new Set([
+    "전체리스트",
+    "상파울로 이외 지역 주요기관인사",
+    "한국 주요기관인사",
+    "언론인",
+    "인플루언서",
+    "상파울로 기반 주요기관인사",
+  ]);
+
+  return masterSheets.has(sheetName) ? "" : sheetName;
+}
+
+function inferCategoryFlags(sheetName: string, category: string) {
+  const normalizedSheet = normalizeHeader(sheetName);
+  const normalizedCategory = normalizeHeader(category);
+
+  return {
+    isInfluencer:
+      normalizedSheet.includes("influencer") ||
+      normalizedSheet.includes("인플루언서") ||
+      normalizedCategory.includes("influencer") ||
+      normalizedCategory.includes("인플루언서"),
+    isMedia:
+      normalizedSheet.includes("언론") ||
+      normalizedCategory.includes("언론") ||
+      normalizedCategory.includes("media") ||
+      normalizedCategory.includes("journal"),
+  };
+}
+
+export function extractLegacyWorkbookData(buffer: Buffer) {
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const previews: LegacyPreviewRow[] = [];
+  const mappedRows: LegacyMappedRow[] = [];
 
   const sheetSummaries = workbook.SheetNames.map((sheetName) => {
     const sheet = workbook.Sheets[sheetName];
@@ -83,22 +124,52 @@ export function parseLegacyWorkbook(buffer: Buffer) {
       defval: "",
     });
 
-    records.slice(0, 8).forEach((record, recordIndex) => {
+    records.forEach((record, recordIndex) => {
+      const category = getCell(record, fieldAliases.category);
+      const company = getCell(record, fieldAliases.company);
+      const name = getCell(record, fieldAliases.name);
+      const ownerStaff = getCell(record, fieldAliases.ownerStaff);
+      const email = getCell(record, fieldAliases.email);
+      const phone = getCell(record, fieldAliases.phone);
       const photoValue =
         getCell(record, fieldAliases.photo) ||
         (sheetName.toLowerCase().includes("foto") ? "시트명에 FOTO 포함" : "");
+      const rowNumber = headerRowIndex + recordIndex + 2;
+      const flags = inferCategoryFlags(sheetName, category);
 
-      previews.push({
+      const mappedRow = {
         sheetName,
-        rowNumber: headerRowIndex + recordIndex + 2,
-        name: getCell(record, fieldAliases.name),
-        company: getCell(record, fieldAliases.company),
-        category: getCell(record, fieldAliases.category),
-        ownerStaff: getCell(record, fieldAliases.ownerStaff),
-        email: getCell(record, fieldAliases.email),
-        phone: getCell(record, fieldAliases.phone),
+        rowNumber,
+        name,
+        company,
+        category,
+        ownerStaff,
+        email,
+        phone,
         imageHint: photoValue,
-      });
+        jobTitle: getCell(record, fieldAliases.jobTitle),
+        socialUrl: getCell(record, fieldAliases.socialUrl),
+        eventName: inferEventName(sheetName),
+        isInfluencer: flags.isInfluencer,
+        isMedia: flags.isMedia,
+        rawRecord: record,
+      } satisfies LegacyMappedRow;
+
+      mappedRows.push(mappedRow);
+
+      if (recordIndex < 8) {
+        previews.push({
+          sheetName,
+          rowNumber,
+          name,
+          company,
+          category,
+          ownerStaff,
+          email,
+          phone,
+          imageHint: photoValue,
+        });
+      }
     });
 
     return {
@@ -117,5 +188,14 @@ export function parseLegacyWorkbook(buffer: Buffer) {
     sheetCount: workbook.SheetNames.length,
     sheetSummaries,
     previewRows: previews.slice(0, 30),
+    mappedRows,
+  };
+}
+
+export function parseLegacyWorkbook(buffer: Buffer) {
+  const { mappedRows, ...rest } = extractLegacyWorkbookData(buffer);
+  return {
+    ...rest,
+    mappedRowCount: mappedRows.length,
   };
 }

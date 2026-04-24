@@ -6,6 +6,20 @@ import { normalizeBusinessCard } from "@/lib/ocr/normalizeCard";
 import { scoreContactMatch, type ExistingContactCandidate } from "@/lib/contacts/mergeContact";
 import { hasConfiguredServerEnv } from "@/lib/env";
 
+type ContactRecord = ExistingContactCandidate & {
+  job_title: string | null;
+  website: string | null;
+  address: string | null;
+  city: string | null;
+  country: string | null;
+  is_influencer: boolean;
+  is_media: boolean;
+};
+
+function mergeField(incoming: string, existing: string | null) {
+  return incoming || existing || null;
+}
+
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
@@ -84,11 +98,14 @@ export async function POST(request: Request) {
 
   const contactsQuery = await supabase
     .from("contacts")
-    .select("id, name, company, email, phone")
+    .select(
+      "id, name, company, email, phone, job_title, website, address, city, country, is_influencer, is_media",
+    )
     .limit(500);
+  const candidates = (contactsQuery.data ?? []) as ContactRecord[];
 
-  if (!contactsQuery.error && contactsQuery.data) {
-    const scored = (contactsQuery.data as ExistingContactCandidate[])
+  if (!contactsQuery.error && candidates.length > 0) {
+    const scored = candidates
       .map((candidate) => ({
         id: candidate.id,
         ...scoreContactMatch(normalized, candidate),
@@ -100,22 +117,122 @@ export async function POST(request: Request) {
     }
   }
 
+  const mergeSuggestion =
+    bestMatch && bestMatch.score >= 60
+      ? bestMatch
+      : {
+          action: "create-new" as const,
+          score: 0,
+          reasons: ["기존 연락처와 강한 중복 없음"],
+        };
+
+  let savedContactId: string | null = null;
+  let savedBusinessCardId: string | null = null;
+  let saveAction = "pending-review";
+
+  if (mergeSuggestion.action === "auto-merge") {
+    const matched = candidates.find((candidate) => candidate.id === mergeSuggestion.id);
+
+    if (matched) {
+      const updateResult = await supabase
+        .from("contacts")
+        .update({
+          name: mergeField(normalized.name, matched.name),
+          company: mergeField(normalized.company, matched.company),
+          job_title: mergeField(normalized.jobTitle, matched.job_title),
+          email: mergeField(normalized.email, matched.email),
+          phone: mergeField(normalized.phone, matched.phone),
+          website: mergeField(normalized.website, matched.website),
+          address: mergeField(normalized.address, matched.address),
+          city: mergeField(normalized.city, matched.city),
+          country: mergeField(normalized.country, matched.country),
+          is_influencer: matched.is_influencer,
+          is_media: matched.is_media,
+          primary_source_type: "business_card",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", matched.id);
+
+      if (updateResult.error) {
+        return NextResponse.json(
+          { ok: false, message: updateResult.error.message },
+          { status: 500 },
+        );
+      }
+
+      savedContactId = matched.id;
+      saveAction = "updated-contact";
+    }
+  } else if (mergeSuggestion.action === "create-new") {
+    const insertContact = await supabase
+      .from("contacts")
+      .insert({
+        name: normalized.name || "이름 미상",
+        company: normalized.company || null,
+        job_title: normalized.jobTitle || null,
+        email: normalized.email || null,
+        phone: normalized.phone || null,
+        website: normalized.website || null,
+        address: normalized.address || null,
+        city: normalized.city || null,
+        country: normalized.country || "Brazil",
+        primary_source_type: "business_card",
+      })
+      .select("id")
+      .single();
+
+    if (insertContact.error) {
+      return NextResponse.json(
+        { ok: false, message: insertContact.error.message },
+        { status: 500 },
+      );
+    }
+
+    savedContactId = insertContact.data.id;
+    saveAction = "created-contact";
+  }
+
+  const businessCardInsert = await supabase
+    .from("business_cards")
+    .insert({
+      contact_id: savedContactId,
+      image_original_path: originalPath,
+      image_preview_path: previewPath,
+      ocr_raw_text: rawText,
+      extracted_json: normalized,
+      language_hint: normalized.languageHint || "pt-BR",
+      review_status:
+        mergeSuggestion.action === "needs-review" ? "needs_review" : "captured",
+    })
+    .select("id")
+    .single();
+
+  if (businessCardInsert.error) {
+    return NextResponse.json(
+      { ok: false, message: businessCardInsert.error.message },
+      { status: 500 },
+    );
+  }
+
+  savedBusinessCardId = businessCardInsert.data.id;
+
   return NextResponse.json({
     ok: true,
-    message: "명함 OCR 분석이 완료되었습니다.",
+    message:
+      mergeSuggestion.action === "needs-review"
+        ? "명함 OCR 분석은 완료되었고, 중복 가능성이 있어 검수 대기 상태로 저장했습니다."
+        : "명함 OCR 분석과 Supabase 저장이 완료되었습니다.",
     storage: {
       originalPath,
       previewPath,
     },
     rawText,
     normalized,
-    mergeSuggestion:
-      bestMatch && bestMatch.score >= 60
-        ? bestMatch
-        : {
-            action: "create-new",
-            score: 0,
-            reasons: ["기존 연락처와 강한 중복 없음"],
-          },
+    mergeSuggestion,
+    saved: {
+      contactId: savedContactId,
+      businessCardId: savedBusinessCardId,
+      action: saveAction,
+    },
   });
 }

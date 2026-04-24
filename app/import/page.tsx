@@ -5,7 +5,9 @@ import { useState } from "react";
 type ImportResult = {
   ok: boolean;
   message: string;
+  batchId?: string;
   sheetCount?: number;
+  mappedRowCount?: number;
   sheetSummaries?: Array<{
     sheetName: string;
     headerRowIndex: number;
@@ -13,6 +15,16 @@ type ImportResult = {
     hasPhotoColumn: boolean;
     sampleColumns: string[];
   }>;
+  importSummary?: {
+    createdContactsCount: number;
+    updatedContactsCount: number;
+    createdCategoryCount: number;
+    createdStaffCount: number;
+    createdEventCount: number;
+    linkedEventCount: number;
+    legacyRowCount: number;
+    reviewCandidatesCount: number;
+  };
   previewRows?: Array<{
     sheetName: string;
     rowNumber: number;
@@ -42,8 +54,13 @@ export default function ImportPage() {
     setResult(null);
 
     try {
+      const submitter = (event.nativeEvent as SubmitEvent).submitter as
+        | HTMLButtonElement
+        | undefined;
+      const action = submitter?.value ?? "analyze";
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("action", action);
 
       const response = await fetch("/api/import/excel", {
         method: "POST",
@@ -87,8 +104,8 @@ export default function ImportPage() {
             1. 엑셀 업로드
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            지금은 `.xlsx` 구조 분석만 진행합니다. 실제 DB 반영은 다음 단계에서
-            붙입니다.
+            구조 분석만 먼저 확인할 수도 있고, 바로 Supabase에 기존 DB를
+            가져올 수도 있습니다.
           </p>
 
           <input
@@ -104,13 +121,24 @@ export default function ImportPage() {
             </div>
           ) : null}
 
-          <button
-            type="submit"
-            disabled={!file || isLoading}
-            className="mt-6 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            {isLoading ? "분석 중..." : "엑셀 구조 분석"}
-          </button>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              type="submit"
+              value="analyze"
+              disabled={!file || isLoading}
+              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {isLoading ? "처리 중..." : "엑셀 구조 분석"}
+            </button>
+            <button
+              type="submit"
+              value="import"
+              disabled={!file || isLoading}
+              className="rounded-full bg-cyan-600 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {isLoading ? "처리 중..." : "Supabase에 저장"}
+            </button>
+          </div>
         </form>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -137,7 +165,7 @@ export default function ImportPage() {
               {result.sheetSummaries ? (
                 <div className="space-y-3">
                   <h3 className="font-semibold text-slate-950">
-                    시트 요약 ({result.sheetCount}개)
+                    시트 요약 ({result.sheetCount}개 / 매핑 행 {result.mappedRowCount ?? 0}건)
                   </h3>
                   <div className="grid gap-3">
                     {result.sheetSummaries.map((sheet) => (
@@ -163,6 +191,35 @@ export default function ImportPage() {
                       </article>
                     ))}
                   </div>
+                </div>
+              ) : null}
+
+              {result.importSummary ? (
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-slate-950">저장 결과</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    {[
+                      ["배치 ID", result.batchId ?? "-"],
+                      ["신규 연락처", String(result.importSummary.createdContactsCount)],
+                      ["업데이트 연락처", String(result.importSummary.updatedContactsCount)],
+                      ["신규 카테고리", String(result.importSummary.createdCategoryCount)],
+                      ["신규 담당자", String(result.importSummary.createdStaffCount)],
+                      ["신규 행사", String(result.importSummary.createdEventCount)],
+                      ["행사 연결", String(result.importSummary.linkedEventCount)],
+                      ["원본 행 저장", String(result.importSummary.legacyRowCount)],
+                      ["검수 후보", String(result.importSummary.reviewCandidatesCount)],
+                    ].map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="rounded-2xl bg-slate-50 px-4 py-3 text-sm"
+                      >
+                        <dt className="font-medium text-slate-500">{label}</dt>
+                        <dd className="mt-1 break-words text-slate-900">
+                          {value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
                 </div>
               ) : null}
 

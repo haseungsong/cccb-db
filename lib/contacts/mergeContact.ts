@@ -8,11 +8,11 @@ export type ExistingContactCandidate = {
   phone: string | null;
 };
 
-function normalizePhone(phone: string) {
+export function normalizePhone(phone: string) {
   return phone.replace(/\D/g, "");
 }
 
-function normalizeText(value: string) {
+export function normalizeText(value: string) {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")

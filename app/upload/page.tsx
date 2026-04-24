@@ -16,6 +16,11 @@ type UploadResult = {
     originalPath: string;
     previewPath: string;
   };
+  saved?: {
+    contactId: string | null;
+    businessCardId: string | null;
+    action: string;
+  };
 };
 
 export default function UploadPage() {
@@ -120,8 +125,8 @@ export default function UploadPage() {
             2. 분석 결과
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            환경변수가 모두 설정되어 있으면 OCR 결과와 중복 후보까지 바로
-            확인할 수 있습니다.
+            환경변수가 모두 설정되어 있으면 OCR 결과와 중복 후보뿐 아니라
+            Supabase 저장 결과까지 바로 확인할 수 있습니다.
           </p>
 
           {!result ? (
@@ -172,6 +177,21 @@ export default function UploadPage() {
                   </p>
                   <p className="mt-2">
                     이유: {result.mergeSuggestion.reasons.join(", ")}
+                  </p>
+                </div>
+              ) : null}
+
+              {result.saved ? (
+                <div className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-700">
+                  <h3 className="font-semibold text-slate-950">저장 결과</h3>
+                  <p className="mt-3">
+                    저장 액션: <strong>{result.saved.action}</strong>
+                  </p>
+                  <p className="mt-2">
+                    연락처 ID: <strong>{result.saved.contactId ?? "검수 후 연결"}</strong>
+                  </p>
+                  <p className="mt-2">
+                    명함 ID: <strong>{result.saved.businessCardId ?? "-"}</strong>
                   </p>
                 </div>
               ) : null}
