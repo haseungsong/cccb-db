@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { parseLegacyWorkbook } from "@/lib/import/mapLegacyExcel";
-import { importLegacyWorkbookToSupabase } from "@/lib/import/saveLegacyWorkbook";
+import {
+  importLegacyWorkbookToSupabase,
+  resetLegacyImportData,
+} from "@/lib/import/saveLegacyWorkbook";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -26,10 +29,14 @@ export async function POST(request: Request) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const action = String(formData.get("action") ?? "analyze");
 
-  if (action === "import") {
+  if (action === "import" || action === "replace") {
     const supabase = createSupabaseAdminClient();
 
     try {
+      if (action === "replace") {
+        await resetLegacyImportData(supabase);
+      }
+
       const imported = await importLegacyWorkbookToSupabase(
         supabase,
         file.name,
@@ -38,7 +45,10 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         ok: true,
-        message: "엑셀 분석과 Supabase 저장이 완료되었습니다.",
+        message:
+          action === "replace"
+            ? "기존 legacy import 데이터를 초기화한 뒤, 엑셀을 다시 저장했습니다."
+            : "엑셀 분석과 Supabase 저장이 완료되었습니다.",
         ...imported,
       });
     } catch (error) {

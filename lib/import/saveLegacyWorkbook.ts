@@ -39,6 +39,14 @@ type EventRow = {
   source_sheet_name: string | null;
 };
 
+type ContactEventRow = {
+  contact_id: string;
+  event_id: string;
+  invite_status: string | null;
+  attendance_status: string | null;
+  notes: string | null;
+};
+
 type PendingContact = {
   key: string;
   payload: {
@@ -48,6 +56,8 @@ type PendingContact = {
     email: string | null;
     phone: string | null;
     website: string | null;
+    address: string | null;
+    city: string | null;
     category_id: string | null;
     owner_staff_id: string | null;
     is_influencer: boolean;
@@ -63,6 +73,8 @@ type ContactMergeBase = {
   email: string | null;
   phone: string | null;
   website: string | null;
+  address?: string | null;
+  city?: string | null;
   category_id?: string | null;
   owner_staff_id?: string | null;
   is_influencer: boolean;
@@ -88,8 +100,8 @@ function buildNormalizedCardFromLegacyRow(row: LegacyMappedRow): NormalizedCard 
     email: row.email,
     phone: row.phone,
     website: row.socialUrl,
-    address: "",
-    city: "",
+    address: row.address,
+    city: row.city,
     country: "Brazil",
     notes: row.eventName ? `source_event: ${row.eventName}` : "",
     languageHint: "pt-BR",
@@ -108,6 +120,8 @@ function buildContactPayload(
     email: row.email || null,
     phone: row.phone || null,
     website: row.socialUrl || null,
+    address: row.address || null,
+    city: row.city || null,
     category_id: categoryId,
     owner_staff_id: ownerStaffId,
     is_influencer: row.isInfluencer,
@@ -127,6 +141,8 @@ function mergeContactPayload(
     email: incoming.email || base.email,
     phone: incoming.phone || base.phone,
     website: incoming.website || base.website,
+    address: incoming.address || base.address || null,
+    city: incoming.city || base.city || null,
     category_id: incoming.category_id || base.category_id || null,
     owner_staff_id: incoming.owner_staff_id || base.owner_staff_id || null,
     is_influencer: base.is_influencer || incoming.is_influencer,
@@ -136,23 +152,40 @@ function mergeContactPayload(
   };
 }
 
+function isSharedMailbox(email: string) {
+  const normalized = email.toLowerCase();
+
+  return [
+    "info@",
+    "contato@",
+    "contact@",
+    "admin@",
+    "imprensa@",
+    "agenda@",
+    "agendasmc@",
+    "secretaria@",
+    "comunicacao@",
+    "atendimento@",
+  ].some((prefix) => normalized.startsWith(prefix));
+}
+
 function getIdentityKey(row: LegacyMappedRow) {
-  if (row.email) {
+  const normalizedPhone = normalizePhone(row.phone);
+
+  if (row.email && !isSharedMailbox(row.email)) {
     return `email:${row.email.toLowerCase()}`;
   }
 
-  const normalizedPhone = normalizePhone(row.phone);
-
-  if (normalizedPhone.length >= 8) {
-    return `phone:${normalizedPhone}`;
+  if (normalizedPhone.length >= 8 && row.name) {
+    return `phone-name:${normalizedPhone}::${normalizeText(row.name)}`;
   }
 
   if (row.name && row.company) {
     return `name-company:${normalizeText(row.name)}::${normalizeText(row.company)}`;
   }
 
-  if (row.name) {
-    return `name:${normalizeText(row.name)}`;
+  if (row.email && row.name) {
+    return `shared-email-name:${row.email.toLowerCase()}::${normalizeText(row.name)}`;
   }
 
   return `row:${row.sheetName}:${row.rowNumber}`;
@@ -194,7 +227,7 @@ function findExistingContactId(
   row: LegacyMappedRow,
   maps: ReturnType<typeof buildExistingContactMaps>,
 ) {
-  if (row.email) {
+  if (row.email && !isSharedMailbox(row.email)) {
     const byEmail = maps.emailMap.get(row.email.toLowerCase());
 
     if (byEmail) {
@@ -208,7 +241,33 @@ function findExistingContactId(
     const byPhone = maps.phoneMap.get(normalizedPhone);
 
     if (byPhone) {
-      return byPhone;
+      const existingByPhone = maps.byId.get(byPhone);
+
+      if (
+        existingByPhone &&
+        ((row.name &&
+          existingByPhone.name &&
+          normalizeText(row.name) === normalizeText(existingByPhone.name)) ||
+          (row.company &&
+            existingByPhone.company &&
+            normalizeText(row.company) ===
+              normalizeText(existingByPhone.company)))
+      ) {
+        return byPhone;
+      }
+    }
+  }
+
+  if (row.email && row.name) {
+    const sameEmailAndName = Array.from(maps.byId.values()).find(
+      (contact) =>
+        contact.email?.toLowerCase() === row.email.toLowerCase() &&
+        contact.name &&
+        normalizeText(contact.name) === normalizeText(row.name),
+    );
+
+    if (sameEmailAndName) {
+      return sameEmailAndName.id;
     }
   }
 
@@ -361,6 +420,247 @@ async function ensureEvents(
   }
 
   return { map: eventMap, createdCount };
+}
+
+async function deleteRowsByIds(
+  supabase: AdminClient,
+  table: string,
+  ids: string[],
+) {
+  for (const idChunk of chunk(ids, 200)) {
+    const deleteResult = await supabase.from(table).delete().in("id", idChunk);
+
+    if (deleteResult.error) {
+      throw deleteResult.error;
+    }
+  }
+}
+
+function buildSafeDeduplicationKey(contact: ContactRow) {
+  const normalizedName = contact.name ? normalizeText(contact.name) : "";
+  const normalizedEmail = contact.email?.toLowerCase().trim() ?? "";
+  const normalizedPhone = normalizePhone(contact.phone ?? "");
+  const normalizedCompany = contact.company ? normalizeText(contact.company) : "";
+
+  if (normalizedName && normalizedPhone.length >= 8) {
+    return `phone-name:${normalizedPhone}::${normalizedName}`;
+  }
+
+  if (normalizedName && normalizedEmail && !isSharedMailbox(normalizedEmail)) {
+    return `email-name:${normalizedEmail}::${normalizedName}`;
+  }
+
+  if (normalizedName && normalizedCompany) {
+    return `name-company:${normalizedName}::${normalizedCompany}`;
+  }
+
+  return "";
+}
+
+function scoreContactCompleteness(contact: ContactRow) {
+  return [
+    contact.name,
+    contact.company,
+    contact.email,
+    contact.phone,
+    contact.job_title,
+    contact.website,
+    contact.address,
+    contact.city,
+  ].filter(Boolean).length;
+}
+
+async function mergeDuplicateLegacyContacts(supabase: AdminClient) {
+  const contactsResult = await supabase
+    .from("contacts")
+    .select(
+      "id, name, company, email, phone, job_title, website, address, city, country, is_influencer, is_media",
+    )
+    .eq("primary_source_type", "legacy_import");
+
+  if (contactsResult.error) {
+    throw contactsResult.error;
+  }
+
+  const contacts = (contactsResult.data ?? []) as ContactRow[];
+  const grouped = new Map<string, ContactRow[]>();
+
+  contacts.forEach((contact) => {
+    const key = buildSafeDeduplicationKey(contact);
+
+    if (!key) {
+      return;
+    }
+
+    grouped.set(key, [...(grouped.get(key) ?? []), contact]);
+  });
+
+  let mergedCount = 0;
+
+  for (const group of grouped.values()) {
+    if (group.length < 2) {
+      continue;
+    }
+
+    const sorted = [...group].sort(
+      (left, right) => scoreContactCompleteness(right) - scoreContactCompleteness(left),
+    );
+    const canonical = sorted[0];
+    const duplicates = sorted.slice(1);
+    const mergedPayload = sorted.reduce<ContactMergeBase>(
+      (accumulator, contact) => mergeContactPayload(accumulator, {
+        name: contact.name || "이름 미상",
+        company: contact.company,
+        job_title: contact.job_title,
+        email: contact.email,
+        phone: contact.phone,
+        website: contact.website,
+        address: contact.address ?? null,
+        city: contact.city ?? null,
+        category_id: null,
+        owner_staff_id: null,
+        is_influencer: contact.is_influencer,
+        is_media: contact.is_media,
+        primary_source_type: "legacy_import",
+      }),
+      canonical,
+    );
+
+    const canonicalUpdate = await supabase
+      .from("contacts")
+      .update({
+        ...mergedPayload,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", canonical.id);
+
+    if (canonicalUpdate.error) {
+      throw canonicalUpdate.error;
+    }
+
+    for (const duplicate of duplicates) {
+      const eventRowsResult = await supabase
+        .from("contact_events")
+        .select("contact_id, event_id, invite_status, attendance_status, notes")
+        .eq("contact_id", duplicate.id);
+
+      if (eventRowsResult.error) {
+        throw eventRowsResult.error;
+      }
+
+      const eventRows = (eventRowsResult.data ?? []) as ContactEventRow[];
+
+      if (eventRows.length > 0) {
+        const eventUpsert = await supabase.from("contact_events").upsert(
+          eventRows.map((row) => ({
+            ...row,
+            contact_id: canonical.id,
+          })),
+          { onConflict: "contact_id,event_id", ignoreDuplicates: true },
+        );
+
+        if (eventUpsert.error) {
+          throw eventUpsert.error;
+        }
+
+        const eventDelete = await supabase
+          .from("contact_events")
+          .delete()
+          .eq("contact_id", duplicate.id);
+
+        if (eventDelete.error) {
+          throw eventDelete.error;
+        }
+      }
+
+      const legacyRowUpdate = await supabase
+        .from("legacy_rows")
+        .update({ mapped_contact_id: canonical.id })
+        .eq("mapped_contact_id", duplicate.id);
+
+      if (legacyRowUpdate.error) {
+        throw legacyRowUpdate.error;
+      }
+
+      const contactDelete = await supabase
+        .from("contacts")
+        .delete()
+        .eq("id", duplicate.id);
+
+      if (contactDelete.error) {
+        throw contactDelete.error;
+      }
+
+      mergedCount += 1;
+    }
+  }
+
+  return mergedCount;
+}
+
+export async function resetLegacyImportData(supabase: AdminClient) {
+  const [legacyContacts, batches, events, legacyRows] = await Promise.all([
+    supabase
+      .from("contacts")
+      .select("id")
+      .eq("primary_source_type", "legacy_import"),
+    supabase.from("import_batches").select("id"),
+    supabase.from("events").select("id"),
+    supabase.from("legacy_rows").select("id"),
+  ]);
+
+  if (legacyContacts.error) throw legacyContacts.error;
+  if (batches.error) throw batches.error;
+  if (events.error) throw events.error;
+  if (legacyRows.error) throw legacyRows.error;
+
+  const contactEventsDelete = await supabase
+    .from("contact_events")
+    .delete()
+    .neq("contact_id", "00000000-0000-0000-0000-000000000000");
+
+  if (contactEventsDelete.error) {
+    throw contactEventsDelete.error;
+  }
+
+  await deleteRowsByIds(
+    supabase,
+    "legacy_rows",
+    (legacyRows.data ?? []).map((row) => row.id as string),
+  );
+  await deleteRowsByIds(
+    supabase,
+    "import_batches",
+    (batches.data ?? []).map((row) => row.id as string),
+  );
+  await deleteRowsByIds(
+    supabase,
+    "events",
+    (events.data ?? []).map((row) => row.id as string),
+  );
+  await deleteRowsByIds(
+    supabase,
+    "contacts",
+    (legacyContacts.data ?? []).map((row) => row.id as string),
+  );
+
+  const staffDelete = await supabase
+    .from("staff_members")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+
+  if (staffDelete.error) {
+    throw staffDelete.error;
+  }
+
+  const categoryDelete = await supabase
+    .from("categories")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+
+  if (categoryDelete.error) {
+    throw categoryDelete.error;
+  }
 }
 
 export async function importLegacyWorkbookToSupabase(
@@ -561,6 +861,8 @@ export async function importLegacyWorkbookToSupabase(
     throw batchUpdate.error;
   }
 
+  const mergedDuplicateCount = await mergeDuplicateLegacyContacts(supabase);
+
   return {
     ...responseData,
     mappedRowCount: mappedRows.length,
@@ -574,6 +876,7 @@ export async function importLegacyWorkbookToSupabase(
       linkedEventCount: contactEventsRows.length,
       legacyRowCount: legacyRowsPayload.length,
       reviewCandidatesCount: reviewCandidates,
+      mergedDuplicateCount,
     },
   };
 }

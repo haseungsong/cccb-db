@@ -24,6 +24,7 @@ type ImportResult = {
     linkedEventCount: number;
     legacyRowCount: number;
     reviewCandidatesCount: number;
+    mergedDuplicateCount: number;
   };
   previewRows?: Array<{
     sheetName: string;
@@ -138,6 +139,14 @@ export default function ImportPage() {
             >
               {isLoading ? "처리 중..." : "Supabase에 저장"}
             </button>
+            <button
+              type="submit"
+              value="replace"
+              disabled={!file || isLoading}
+              className="rounded-full bg-amber-500 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {isLoading ? "처리 중..." : "기존 import 초기화 후 다시 저장"}
+            </button>
           </div>
         </form>
 
@@ -208,6 +217,7 @@ export default function ImportPage() {
                       ["행사 연결", String(result.importSummary.linkedEventCount)],
                       ["원본 행 저장", String(result.importSummary.legacyRowCount)],
                       ["검수 후보", String(result.importSummary.reviewCandidatesCount)],
+                      ["자동 병합 중복", String(result.importSummary.mergedDuplicateCount)],
                     ].map(([label, value]) => (
                       <div
                         key={label}
