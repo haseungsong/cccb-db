@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getOptionalActorContext } from "@/lib/auth/actor";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { createPreviewImage } from "@/lib/image/prepareImage";
-import { runGoogleVisionOCR } from "@/lib/ocr/googleVision";
-import { normalizeBusinessCard } from "@/lib/ocr/normalizeCard";
 import { scoreContactMatch, type ExistingContactCandidate } from "@/lib/contacts/mergeContact";
+import { createPreviewImage } from "@/lib/image/prepareImage";
+import { normalizeBusinessCard } from "@/lib/ocr/normalizeCard";
+import { runGoogleVisionOCR } from "@/lib/ocr/googleVision";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { hasConfiguredServerEnv } from "@/lib/env";
+import { normalizedCardSchema, type NormalizedCard } from "@/lib/validators/card";
 
 type ContactRecord = ExistingContactCandidate & {
   job_title: string | null;
@@ -16,6 +17,27 @@ type ContactRecord = ExistingContactCandidate & {
   owner_staff_id: string | null;
   is_influencer: boolean;
   is_media: boolean;
+};
+
+type MergeSuggestion = {
+  id?: string;
+  score: number;
+  reasons: string[];
+  action: "auto-merge" | "needs-review" | "create-new";
+};
+
+type AnalysisItem = {
+  clientId: string;
+  fileName: string;
+  rawText: string;
+  normalized: NormalizedCard;
+  mergeSuggestion: MergeSuggestion;
+  storage: {
+    originalBucket: "cards-original";
+    originalPath: string;
+    previewBucket: "cards-preview";
+    previewPath: string;
+  };
 };
 
 function mergeField(incoming: string, existing: string | null) {
@@ -36,6 +58,245 @@ function isMissingColumnError(error: unknown, columnName: string) {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+}
+
+function readText(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return typeof value === "string" ? value : "";
+}
+
+function buildMergeSuggestion(normalized: NormalizedCard, candidates: ContactRecord[]): MergeSuggestion {
+  const scored = candidates
+    .map((candidate) => ({
+      id: candidate.id,
+      ...scoreContactMatch(normalized, candidate),
+    }))
+    .sort((left, right) => right.score - left.score)[0];
+
+  if (scored && scored.score >= 60) {
+    return scored;
+  }
+
+  return {
+    action: "create-new",
+    score: 0,
+    reasons: ["기존 연락처와 강한 중복 없음"],
+  };
+}
+
+async function loadCandidates() {
+  const supabase = createSupabaseAdminClient();
+  const contactsQuery = await supabase
+    .from("contacts")
+    .select(
+      "id, name, company, email, phone, job_title, website, address, city, country, owner_staff_id, is_influencer, is_media",
+    )
+    .limit(1000);
+
+  if (contactsQuery.error) {
+    throw contactsQuery.error;
+  }
+
+  return (contactsQuery.data ?? []) as ContactRecord[];
+}
+
+async function uploadAssets(file: File) {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("명함 이미지 파일만 업로드할 수 있습니다.");
+  }
+
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error("이미지 파일은 10MB 이하로 업로드해 주세요.");
+  }
+
+  const originalBuffer = Buffer.from(await file.arrayBuffer());
+  const previewBuffer = await createPreviewImage(originalBuffer);
+  const supabase = createSupabaseAdminClient();
+  const basePath = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}`;
+  const originalPath = `${basePath}-original.jpg`;
+  const previewPath = `${basePath}-preview.jpg`;
+
+  const [{ error: originalUploadError }, { error: previewUploadError }] = await Promise.all([
+    supabase.storage.from("cards-original").upload(originalPath, originalBuffer, {
+      contentType: file.type || "image/jpeg",
+      upsert: false,
+    }),
+    supabase.storage.from("cards-preview").upload(previewPath, previewBuffer, {
+      contentType: "image/jpeg",
+      upsert: false,
+    }),
+  ]);
+
+  if (originalUploadError || previewUploadError) {
+    throw new Error(
+      `스토리지 업로드에 실패했습니다. ${originalUploadError?.message ?? ""} ${previewUploadError?.message ?? ""}`.trim(),
+    );
+  }
+
+  return {
+    originalBuffer,
+    originalPath,
+    previewPath,
+  };
+}
+
+async function analyzeSingleFile(file: File, candidates: ContactRecord[], clientId: string) {
+  const { originalBuffer, originalPath, previewPath } = await uploadAssets(file);
+  const rawText = await runGoogleVisionOCR(originalBuffer);
+
+  if (!rawText.trim()) {
+    throw new Error("이미지에서 읽을 수 있는 텍스트를 찾지 못했습니다. 더 선명한 명함 사진으로 다시 시도해 주세요.");
+  }
+
+  const normalized = await normalizeBusinessCard(rawText);
+
+  return {
+    clientId,
+    fileName: file.name,
+    rawText,
+    normalized,
+    mergeSuggestion: buildMergeSuggestion(normalized, candidates),
+    storage: {
+      originalBucket: "cards-original",
+      originalPath,
+      previewBucket: "cards-preview",
+      previewPath,
+    },
+  } satisfies AnalysisItem;
+}
+
+async function saveAnalyzedItem(item: AnalysisItem, actor: NonNullable<Awaited<ReturnType<typeof getOptionalActorContext>>>) {
+  const supabase = createSupabaseAdminClient();
+  const candidates = await loadCandidates();
+  const mergeSuggestion = buildMergeSuggestion(item.normalized, candidates);
+  let savedContactId: string | null = null;
+  let savedBusinessCardId: string | null = null;
+  let saveAction = "pending-review";
+
+  if (mergeSuggestion.action === "auto-merge" && mergeSuggestion.id) {
+    const matched = candidates.find((candidate) => candidate.id === mergeSuggestion.id);
+
+    if (matched) {
+      const updateResult = await supabase
+        .from("contacts")
+        .update({
+          name: mergeField(item.normalized.name, matched.name),
+          company: mergeField(item.normalized.company, matched.company),
+          job_title: mergeField(item.normalized.jobTitle, matched.job_title),
+          email: mergeField(item.normalized.email, matched.email),
+          phone: mergeField(item.normalized.phone, matched.phone),
+          website: mergeField(item.normalized.website, matched.website),
+          address: mergeField(item.normalized.address, matched.address),
+          city: mergeField(item.normalized.city, matched.city),
+          country: mergeField(item.normalized.country, matched.country),
+          owner_staff_id: matched.owner_staff_id || actor.staffMemberId,
+          is_influencer: matched.is_influencer,
+          is_media: matched.is_media,
+          primary_source_type: "business_card",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", matched.id);
+
+      if (updateResult.error) {
+        throw updateResult.error;
+      }
+
+      savedContactId = matched.id;
+      saveAction = "updated-contact";
+    }
+  } else {
+    const insertContact = await supabase
+      .from("contacts")
+      .insert({
+        name: item.normalized.name || "이름 미상",
+        company: item.normalized.company || null,
+        job_title: item.normalized.jobTitle || null,
+        email: item.normalized.email || null,
+        phone: item.normalized.phone || null,
+        website: item.normalized.website || null,
+        address: item.normalized.address || null,
+        city: item.normalized.city || null,
+        country: item.normalized.country || "Brazil",
+        owner_staff_id: actor.staffMemberId,
+        primary_source_type: "business_card",
+        created_by: actor.userId,
+      })
+      .select("id")
+      .single();
+
+    if (insertContact.error) {
+      throw insertContact.error;
+    }
+
+    savedContactId = insertContact.data.id;
+    saveAction = "created-contact";
+  }
+
+  const businessCardPayload = {
+    contact_id: savedContactId,
+    image_original_path: item.storage.originalPath,
+    image_preview_path: item.storage.previewPath,
+    ocr_raw_text: item.rawText,
+    extracted_json: item.normalized,
+    language_hint: item.normalized.languageHint || "pt-BR",
+    review_status: mergeSuggestion.action === "needs-review" ? "needs_review" : "captured",
+    created_by: actor.userId,
+  };
+  const businessCardInsertWithActor = await supabase
+    .from("business_cards")
+    .insert(businessCardPayload)
+    .select("id")
+    .single();
+  const businessCardInsert = isMissingColumnError(
+    businessCardInsertWithActor.error,
+    "created_by",
+  )
+    ? await supabase
+        .from("business_cards")
+        .insert({
+          contact_id: savedContactId,
+          image_original_path: item.storage.originalPath,
+          image_preview_path: item.storage.previewPath,
+          ocr_raw_text: item.rawText,
+          extracted_json: item.normalized,
+          language_hint: item.normalized.languageHint || "pt-BR",
+          review_status: mergeSuggestion.action === "needs-review" ? "needs_review" : "captured",
+        })
+        .select("id")
+        .single()
+    : businessCardInsertWithActor;
+
+  if (businessCardInsert.error) {
+    throw businessCardInsert.error;
+  }
+
+  savedBusinessCardId = businessCardInsert.data.id;
+
+  if (savedContactId) {
+    await supabase.from("contact_audit_logs").insert({
+      contact_id: savedContactId,
+      actor_id: actor.userId,
+      action:
+        mergeSuggestion.action === "auto-merge" ? "business-card-auto-merge" : "business-card-create",
+      payload: {
+        businessCardId: savedBusinessCardId,
+        actorDisplayName: actor.displayName,
+        actorTeamName: actor.teamName || null,
+        mergeAction: mergeSuggestion.action,
+        reviewedBeforeSave: true,
+      },
+    });
+  }
+
+  return {
+    ...item,
+    mergeSuggestion,
+    saved: {
+      contactId: savedContactId,
+      businessCardId: savedBusinessCardId,
+      action: saveAction,
+    },
+  };
 }
 
 export const runtime = "nodejs";
@@ -62,300 +323,112 @@ export async function POST(request: Request) {
   }
 
   const formData = await request.formData();
-  const file = formData.get("file");
+  const step = readText(formData, "step") || "analyze";
 
-  if (!(file instanceof File)) {
+  if (step === "save") {
+    const itemsText = readText(formData, "items");
+    if (!itemsText) {
+      return NextResponse.json(
+        { ok: false, message: "저장할 분석 결과가 없습니다." },
+        { status: 400 },
+      );
+    }
+
+    const parsedItems = JSON.parse(itemsText) as Array<{
+      clientId: string;
+      fileName: string;
+      rawText: string;
+      normalized: Record<string, unknown>;
+      storage: {
+        originalPath: string;
+        previewPath: string;
+      };
+    }>;
+
+    const savedItems: Array<
+      Awaited<ReturnType<typeof saveAnalyzedItem>>
+    > = [];
+
+    for (const item of parsedItems) {
+      const normalized = normalizedCardSchema.parse(item.normalized);
+      savedItems.push(
+        await saveAnalyzedItem(
+          {
+            clientId: item.clientId,
+            fileName: item.fileName,
+            rawText: item.rawText,
+            normalized,
+            mergeSuggestion: {
+              action: "create-new",
+              score: 0,
+              reasons: [],
+            },
+            storage: {
+              originalBucket: "cards-original",
+              originalPath: item.storage.originalPath,
+              previewBucket: "cards-preview",
+              previewPath: item.storage.previewPath,
+            },
+          },
+          actor,
+        ),
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      message: `${savedItems.length}장의 명함을 확인 후 저장했습니다.`,
+      items: savedItems,
+    });
+  }
+
+  const rawFiles = formData.getAll("files");
+  const files = rawFiles.filter((entry): entry is File => entry instanceof File && entry.size > 0);
+
+  if (files.length === 0) {
+    const single = formData.get("file");
+    if (single instanceof File && single.size > 0) {
+      files.push(single);
+    }
+  }
+
+  if (files.length === 0) {
     return NextResponse.json(
       { ok: false, message: "업로드할 이미지 파일이 없습니다." },
       { status: 400 },
     );
   }
 
-  if (!file.type.startsWith("image/")) {
-    return NextResponse.json(
-      { ok: false, message: "명함 이미지 파일만 업로드할 수 있습니다." },
-      { status: 400 },
-    );
-  }
-
-  if (file.size > 10 * 1024 * 1024) {
-    return NextResponse.json(
-      { ok: false, message: "이미지 파일은 10MB 이하로 업로드해 주세요." },
-      { status: 400 },
-    );
-  }
-
-  const originalBuffer = Buffer.from(await file.arrayBuffer());
-  let previewBuffer: Buffer;
-
+  let candidates: ContactRecord[] = [];
   try {
-    previewBuffer = await createPreviewImage(originalBuffer);
+    candidates = await loadCandidates();
   } catch (error) {
     return NextResponse.json(
-      {
-        ok: false,
-        message: "이미지 미리보기 생성에 실패했습니다. 다른 JPG/PNG 파일로 다시 시도해 주세요.",
-        detail: getErrorMessage(error),
-      },
-      { status: 400 },
-    );
-  }
-
-  const supabase = createSupabaseAdminClient();
-  const basePath = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}`;
-  const originalPath = `${basePath}-original.jpg`;
-  const previewPath = `${basePath}-preview.jpg`;
-
-  const [{ error: originalUploadError }, { error: previewUploadError }] =
-    await Promise.all([
-      supabase.storage
-        .from("cards-original")
-        .upload(originalPath, originalBuffer, {
-          contentType: "image/jpeg",
-          upsert: false,
-        }),
-      supabase.storage
-        .from("cards-preview")
-        .upload(previewPath, previewBuffer, {
-          contentType: "image/jpeg",
-          upsert: false,
-        }),
-    ]);
-
-  if (originalUploadError || previewUploadError) {
-    return NextResponse.json(
-      {
-        ok: false,
-        message: "스토리지 업로드에 실패했습니다.",
-        originalUploadError: originalUploadError?.message,
-        previewUploadError: previewUploadError?.message,
-      },
+      { ok: false, message: getErrorMessage(error) },
       { status: 500 },
     );
   }
 
-  let rawText = "";
+  const items: AnalysisItem[] = [];
 
-  try {
-    rawText = await runGoogleVisionOCR(originalBuffer);
-  } catch (error) {
-    return NextResponse.json(
-      {
-        ok: false,
-        message: "Google Vision OCR 처리에 실패했습니다. API 키와 결제/권한 설정을 확인해 주세요.",
-        detail: getErrorMessage(error),
-      },
-      { status: 502 },
-    );
-  }
-
-  if (!rawText.trim()) {
-    return NextResponse.json(
-      {
-        ok: false,
-        message: "이미지에서 읽을 수 있는 텍스트를 찾지 못했습니다. 더 선명한 명함 사진으로 다시 시도해 주세요.",
-      },
-      { status: 422 },
-    );
-  }
-
-  let normalized: Awaited<ReturnType<typeof normalizeBusinessCard>>;
-
-  try {
-    normalized = await normalizeBusinessCard(rawText);
-  } catch (error) {
-    return NextResponse.json(
-      {
-        ok: false,
-        message: "OCR 결과를 연락처 정보로 정리하는 과정에 실패했습니다. OpenAI API 키와 모델 설정을 확인해 주세요.",
-        detail: getErrorMessage(error),
-        rawText,
-      },
-      { status: 502 },
-    );
-  }
-
-  let bestMatch: {
-    id: string;
-    score: number;
-    reasons: string[];
-    action: "auto-merge" | "needs-review" | "create-new";
-  } | null = null;
-
-  const contactsQuery = await supabase
-    .from("contacts")
-    .select(
-      "id, name, company, email, phone, job_title, website, address, city, country, owner_staff_id, is_influencer, is_media",
-    )
-    .limit(500);
-  const candidates = (contactsQuery.data ?? []) as ContactRecord[];
-
-  if (!contactsQuery.error && candidates.length > 0) {
-    const scored = candidates
-      .map((candidate) => ({
-        id: candidate.id,
-        ...scoreContactMatch(normalized, candidate),
-      }))
-      .sort((a, b) => b.score - a.score)[0];
-
-    if (scored) {
-      bestMatch = scored;
-    }
-  }
-
-  const mergeSuggestion =
-    bestMatch && bestMatch.score >= 60
-      ? bestMatch
-      : {
-          action: "create-new" as const,
-          score: 0,
-          reasons: ["기존 연락처와 강한 중복 없음"],
-        };
-
-  let savedContactId: string | null = null;
-  let savedBusinessCardId: string | null = null;
-  let saveAction = "pending-review";
-
-  if (mergeSuggestion.action === "auto-merge") {
-    const matched = candidates.find((candidate) => candidate.id === mergeSuggestion.id);
-
-    if (matched) {
-      const updateResult = await supabase
-        .from("contacts")
-        .update({
-          name: mergeField(normalized.name, matched.name),
-          company: mergeField(normalized.company, matched.company),
-          job_title: mergeField(normalized.jobTitle, matched.job_title),
-          email: mergeField(normalized.email, matched.email),
-          phone: mergeField(normalized.phone, matched.phone),
-          website: mergeField(normalized.website, matched.website),
-          address: mergeField(normalized.address, matched.address),
-          city: mergeField(normalized.city, matched.city),
-          country: mergeField(normalized.country, matched.country),
-          owner_staff_id: matched.owner_staff_id || actor.staffMemberId,
-          is_influencer: matched.is_influencer,
-          is_media: matched.is_media,
-          primary_source_type: "business_card",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", matched.id);
-
-      if (updateResult.error) {
-        return NextResponse.json(
-          { ok: false, message: updateResult.error.message },
-          { status: 500 },
-        );
-      }
-
-      savedContactId = matched.id;
-      saveAction = "updated-contact";
-    }
-  } else if (mergeSuggestion.action === "create-new") {
-    const insertContact = await supabase
-      .from("contacts")
-      .insert({
-        name: normalized.name || "이름 미상",
-        company: normalized.company || null,
-        job_title: normalized.jobTitle || null,
-        email: normalized.email || null,
-        phone: normalized.phone || null,
-        website: normalized.website || null,
-        address: normalized.address || null,
-        city: normalized.city || null,
-        country: normalized.country || "Brazil",
-        owner_staff_id: actor.staffMemberId,
-        primary_source_type: "business_card",
-        created_by: actor.userId,
-      })
-      .select("id")
-      .single();
-
-    if (insertContact.error) {
+  for (const [index, file] of files.entries()) {
+    try {
+      items.push(await analyzeSingleFile(file, candidates, `${Date.now()}-${index}`));
+    } catch (error) {
       return NextResponse.json(
-        { ok: false, message: insertContact.error.message },
-        { status: 500 },
+        {
+          ok: false,
+          message: `${file.name} 분석에 실패했습니다.`,
+          detail: getErrorMessage(error),
+        },
+        { status: 400 },
       );
     }
-
-    savedContactId = insertContact.data.id;
-    saveAction = "created-contact";
-  }
-
-  const businessCardPayload = {
-    contact_id: savedContactId,
-    image_original_path: originalPath,
-    image_preview_path: previewPath,
-    ocr_raw_text: rawText,
-    extracted_json: normalized,
-    language_hint: normalized.languageHint || "pt-BR",
-    review_status: mergeSuggestion.action === "needs-review" ? "needs_review" : "captured",
-    created_by: actor.userId,
-  };
-  const businessCardInsertWithActor = await supabase
-    .from("business_cards")
-    .insert(businessCardPayload)
-    .select("id")
-    .single();
-  const businessCardInsert = isMissingColumnError(
-    businessCardInsertWithActor.error,
-    "created_by",
-  )
-    ? await supabase
-        .from("business_cards")
-        .insert({
-          contact_id: savedContactId,
-          image_original_path: originalPath,
-          image_preview_path: previewPath,
-          ocr_raw_text: rawText,
-          extracted_json: normalized,
-          language_hint: normalized.languageHint || "pt-BR",
-          review_status: mergeSuggestion.action === "needs-review" ? "needs_review" : "captured",
-        })
-        .select("id")
-        .single()
-    : businessCardInsertWithActor;
-
-  if (businessCardInsert.error) {
-    return NextResponse.json(
-      { ok: false, message: businessCardInsert.error.message },
-      { status: 500 },
-    );
-  }
-
-  savedBusinessCardId = businessCardInsert.data.id;
-
-  if (savedContactId) {
-    await supabase.from("contact_audit_logs").insert({
-      contact_id: savedContactId,
-      actor_id: actor.userId,
-      action:
-        mergeSuggestion.action === "auto-merge" ? "business-card-auto-merge" : "business-card-create",
-      payload: {
-        businessCardId: savedBusinessCardId,
-        actorDisplayName: actor.displayName,
-        actorTeamName: actor.teamName || null,
-        mergeAction: mergeSuggestion.action,
-      },
-    });
   }
 
   return NextResponse.json({
     ok: true,
-    message:
-      mergeSuggestion.action === "needs-review"
-        ? "명함 OCR 분석은 완료되었고, 중복 가능성이 있어 검수 대기 상태로 저장했습니다."
-        : "명함 OCR 분석과 Supabase 저장이 완료되었습니다.",
-    storage: {
-      originalPath,
-      previewPath,
-    },
-    rawText,
-    normalized,
-    mergeSuggestion,
-    saved: {
-      contactId: savedContactId,
-      businessCardId: savedBusinessCardId,
-      action: saveAction,
-    },
+    message: `${items.length}장의 명함 분석을 완료했습니다. 저장 전에 내용을 한 번 더 확인해 주세요.`,
+    items,
   });
 }
