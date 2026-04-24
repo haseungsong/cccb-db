@@ -1,17 +1,49 @@
 import Link from "next/link";
+import { sendContactExportEmailAction } from "@/app/actions";
 import { getSearchableContacts, getSearchFacets } from "@/lib/contacts/queries";
+import { buildContactSearchParams, normalizeContactSearchFilters } from "@/lib/contacts/search";
+
+type SelectFilterConfig = {
+  name: "category" | "owner" | "event" | "source" | "tag" | "status";
+  label: string;
+  options: string[];
+};
 
 export default async function CardsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ q?: string }>;
+  searchParams?: Promise<{
+    q?: string;
+    category?: string;
+    owner?: string;
+    event?: string;
+    source?: string;
+    tag?: string;
+    influencer?: string;
+    media?: string;
+    hasCard?: string;
+    hasPhoto?: string;
+    status?: string;
+    exportStatus?: string;
+    emailedTo?: string;
+  }>;
 }) {
   const params = (await searchParams) ?? {};
-  const query = params.q?.trim() ?? "";
+  const filters = normalizeContactSearchFilters(params);
   const [contacts, facets] = await Promise.all([
-    getSearchableContacts(query),
+    getSearchableContacts(filters),
     getSearchFacets(),
   ]);
+  const exportParams = buildContactSearchParams(filters);
+  const exportHref = `/api/export/contacts?${exportParams.toString()}`;
+  const selectFilters: SelectFilterConfig[] = [
+    { name: "category", label: "카테고리", options: ["all", ...facets.categories] },
+    { name: "owner", label: "담당자", options: ["all", ...facets.owners] },
+    { name: "event", label: "행사", options: ["all", ...facets.events] },
+    { name: "source", label: "원본 시트", options: ["all", ...facets.sources] },
+    { name: "tag", label: "태그", options: ["all", ...facets.tags] },
+    { name: "status", label: "상태", options: ["all", ...facets.statuses] },
+  ];
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-6 py-10">
@@ -25,17 +57,138 @@ export default async function CardsPage({
           구성했습니다.
         </p>
 
-        <form className="mt-6">
+        <form className="mt-6 grid gap-3 lg:grid-cols-3">
           <input
             type="search"
             name="q"
-            defaultValue={query}
+            defaultValue={filters.query}
             placeholder="이름, 기관, 이메일, 전화, 행사명, 원본 시트 텍스트까지 검색"
-            className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-800 outline-none ring-0"
+            className="lg:col-span-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-800 outline-none ring-0"
           />
+          {selectFilters.map(({ name, label, options }) => (
+            <label key={name} className="space-y-2 text-sm">
+              <span className="font-medium text-slate-700">{label}</span>
+              <select
+                name={name}
+                defaultValue={String(filters[name as keyof typeof filters] ?? "all")}
+                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800"
+              >
+                {(options as string[]).map((option) => (
+                  <option key={option} value={option}>
+                    {option === "all" ? "전체" : option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+          {[
+            ["influencer", "인플루언서"],
+            ["media", "언론"],
+            ["hasCard", "명함 있음"],
+            ["hasPhoto", "사진 있음"],
+          ].map(([name, label]) => (
+            <label key={name} className="space-y-2 text-sm">
+              <span className="font-medium text-slate-700">{label}</span>
+              <select
+                name={name}
+                defaultValue={String(filters[name as keyof typeof filters] ?? "all")}
+                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800"
+              >
+                <option value="all">전체</option>
+                <option value="yes">예</option>
+                <option value="no">아니오</option>
+              </select>
+            </label>
+          ))}
+          <div className="flex items-end gap-3">
+            <button
+              type="submit"
+              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+            >
+              필터 적용
+            </button>
+            <Link
+              href="/cards"
+              className="rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700"
+            >
+              초기화
+            </Link>
+            <Link
+              href="/cards/new"
+              className="rounded-full border border-cyan-300 bg-cyan-50 px-5 py-3 text-sm font-semibold text-cyan-700"
+            >
+              연락처 추가
+            </Link>
+          </div>
         </form>
 
-        <div className="mt-6 grid gap-3 lg:grid-cols-3">
+        <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_1fr]">
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">검색 결과 내보내기</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  현재 필터 상태 그대로 CSV로 저장하거나 메일로 첨부 전송할 수 있습니다.
+                </p>
+              </div>
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                결과 {contacts.length}건
+              </span>
+            </div>
+
+            {params.exportStatus === "sent" ? (
+              <div className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                CSV 첨부 메일을 {params.emailedTo || "지정한 주소"}로 전송했습니다.
+              </div>
+            ) : null}
+            {params.exportStatus === "smtp-missing" ? (
+              <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                이메일 발송용 SMTP 환경변수가 아직 없습니다. CSV 다운로드는 바로 사용할 수 있습니다.
+              </div>
+            ) : null}
+            {params.exportStatus === "missing-recipient" ? (
+              <div className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                메일 수신 주소를 입력해 주세요.
+              </div>
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <a
+                href={exportHref}
+                className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+              >
+                CSV 다운로드
+              </a>
+            </div>
+
+            <form action={sendContactExportEmailAction} className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+              <input type="hidden" name="q" value={filters.query ?? ""} />
+              <input type="hidden" name="category" value={filters.category ?? "all"} />
+              <input type="hidden" name="owner" value={filters.owner ?? "all"} />
+              <input type="hidden" name="event" value={filters.event ?? "all"} />
+              <input type="hidden" name="source" value={filters.source ?? "all"} />
+              <input type="hidden" name="tag" value={filters.tag ?? "all"} />
+              <input type="hidden" name="influencer" value={filters.influencer ?? "all"} />
+              <input type="hidden" name="media" value={filters.media ?? "all"} />
+              <input type="hidden" name="hasCard" value={filters.hasCard ?? "all"} />
+              <input type="hidden" name="hasPhoto" value={filters.hasPhoto ?? "all"} />
+              <input type="hidden" name="status" value={filters.status ?? "all"} />
+              <input
+                type="email"
+                name="recipient"
+                placeholder="example@domain.com"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800"
+              />
+              <button
+                type="submit"
+                className="rounded-full border border-cyan-300 bg-cyan-50 px-5 py-3 text-sm font-semibold text-cyan-700"
+              >
+                이메일로 첨부 전송
+              </button>
+            </form>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-3">
           <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
             <p className="font-semibold text-slate-900">카테고리 예시</p>
             <p className="mt-2 leading-6 text-slate-600">
@@ -49,11 +202,12 @@ export default async function CardsPage({
             </p>
           </div>
           <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
-            <p className="font-semibold text-slate-900">원본 시트 예시</p>
+            <p className="font-semibold text-slate-900">태그 예시</p>
             <p className="mt-2 leading-6 text-slate-600">
-              {facets.sources.slice(0, 6).join(", ") || "-"}
+              {facets.tags.slice(0, 10).join(", ") || "-"}
             </p>
           </div>
+        </div>
         </div>
       </section>
 
@@ -115,14 +269,24 @@ export default async function CardsPage({
                     {sheet}
                   </span>
                 ))}
+                {contact.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-full bg-fuchsia-50 px-3 py-1 text-xs font-semibold text-fuchsia-700"
+                  >
+                    #{tag}
+                  </span>
+                ))}
               </div>
             </div>
 
             <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500">
               {contact.email ? <span>이메일 {contact.email}</span> : null}
               {contact.phone ? <span>전화 {contact.phone}</span> : null}
+              <span>상태 {contact.contactStatus}</span>
               <span>원본 행 {contact.legacyRowCount}건</span>
               <span>명함 {contact.businessCardCount}건</span>
+              <span>사진 {contact.profileImageCount}건</span>
             </div>
           </Link>
         ))}

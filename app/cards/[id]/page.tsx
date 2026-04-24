@@ -1,7 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getContactDetail } from "@/lib/contacts/queries";
+import {
+  addContactToEventAction,
+  removeContactEventAction,
+} from "@/app/actions";
+import { ContactForm } from "@/app/cards/_components/contact-form";
+import { getContactDetail, getContactFormOptions } from "@/lib/contacts/queries";
 
 export default async function CardDetailPage({
   params,
@@ -9,7 +14,10 @@ export default async function CardDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const contact = await getContactDetail(id);
+  const [contact, options] = await Promise.all([
+    getContactDetail(id),
+    getContactFormOptions(),
+  ]);
 
   if (!contact) {
     notFound();
@@ -142,22 +150,142 @@ export default async function CardDetailPage({
                 {contact.sourceType}
               </dd>
             </div>
+            <div className="rounded-2xl bg-slate-50 p-4 sm:col-span-2">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                태그
+              </dt>
+              <dd className="mt-2 flex flex-wrap gap-2 text-sm text-slate-900">
+                {contact.tags.length > 0
+                  ? contact.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded-full bg-fuchsia-50 px-3 py-1 text-xs font-semibold text-fuchsia-700"
+                      >
+                        #{tag}
+                      </span>
+                    ))
+                  : "-"}
+              </dd>
+            </div>
           </dl>
         </article>
 
         <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-950">행사 이력</h2>
-          <ul className="mt-5 space-y-3">
-            {contact.events.map((eventName) => (
-              <li
-                key={eventName}
-                className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700"
-              >
-                {eventName}
-              </li>
-            ))}
-          </ul>
+          {contact.eventLinks.length === 0 ? (
+            <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">
+              연결된 행사가 없습니다.
+            </div>
+          ) : (
+            <ul className="mt-5 space-y-3">
+              {contact.eventLinks.map((eventLink) => (
+                <li
+                  key={eventLink.id}
+                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="font-semibold text-slate-900">{eventLink.name}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {eventLink.eventDate || "날짜 미정"} · {eventLink.location || "장소 미정"}
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">
+                        초청 {eventLink.inviteStatus || "-"} · 참석 {eventLink.attendanceStatus || "-"}
+                      </div>
+                      {eventLink.notes ? (
+                        <div className="mt-2 text-xs text-slate-500">{eventLink.notes}</div>
+                      ) : null}
+                    </div>
+                    <form action={removeContactEventAction}>
+                      <input type="hidden" name="contactId" value={contact.id} />
+                      <input type="hidden" name="eventId" value={eventLink.id} />
+                      <input type="hidden" name="redirectTo" value={`/cards/${contact.id}`} />
+                      <button
+                        type="submit"
+                        className="rounded-full border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700"
+                      >
+                        연결 해제
+                      </button>
+                    </form>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <form action={addContactToEventAction} className="mt-5 space-y-3 rounded-2xl bg-slate-50 p-4">
+            <input type="hidden" name="contactId" value={contact.id} />
+            <input type="hidden" name="redirectTo" value={`/cards/${contact.id}`} />
+            <h3 className="font-semibold text-slate-900">행사 연결 추가</h3>
+            <select
+              name="eventId"
+              className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm"
+            >
+              <option value="">행사 선택</option>
+              {options.events.map((event) => (
+                <option key={event.id} value={event.id}>
+                  {event.name}
+                </option>
+              ))}
+            </select>
+            <div className="grid gap-3 md:grid-cols-2">
+              <input
+                name="inviteStatus"
+                placeholder="초청 상태"
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm"
+              />
+              <input
+                name="attendanceStatus"
+                placeholder="참석 상태"
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm"
+              />
+            </div>
+            <textarea
+              name="notes"
+              rows={3}
+              placeholder="메모"
+              className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm"
+            />
+            <button
+              type="submit"
+              className="rounded-full bg-slate-950 px-4 py-3 text-sm font-semibold text-white"
+            >
+              행사 연결 저장
+            </button>
+          </form>
         </article>
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-950">연락처 정보 수정</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          OCR 결과나 엑셀 매핑이 완벽하지 않은 경우 여기서 직접 보정하면 됩니다.
+        </p>
+        <div className="mt-5">
+          <ContactForm
+            mode="edit"
+            options={options}
+            initialValues={{
+              id: contact.id,
+              name: contact.name,
+              company: contact.company,
+              jobTitle: contact.jobTitle,
+              email: contact.email,
+              phone: contact.phone,
+              website: contact.website,
+              address: contact.address,
+              city: contact.city,
+              country: contact.country,
+              categoryId: contact.categoryId,
+              ownerStaffId: contact.ownerStaffId,
+              isInfluencer: contact.isInfluencer,
+              isMedia: contact.isMedia,
+              contactStatus: contact.contactStatus,
+              sourceType: contact.sourceType,
+              tags: contact.tags,
+            }}
+          />
+        </div>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
