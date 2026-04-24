@@ -19,18 +19,18 @@ export default async function AuthPage({
             CCCB Contact Hub
           </p>
           <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-            담당자 계정으로 접속하고 모든 변경 이력을 남기세요
+            문화원 공식 계정으로만 접속합니다
           </h1>
           <p className="mt-4 text-sm leading-7 text-slate-200 sm:text-base">
             새 연락처 생성, OCR 명함 업로드, 수정, 팔로업 기록이 모두 로그인한 계정 기준으로
-            저장되도록 바꿨습니다. 각 실무자는 자기 이름으로 계정을 만들고 사용하면 됩니다.
+            저장됩니다. 계정은 @kccbrazil.com.br 이메일을 가진 실무자만 만들 수 있습니다.
           </p>
 
           <div className="mt-8 grid gap-3">
             {[
-              "회원가입 시 담당자 이름과 팀 정보를 함께 저장합니다.",
+              "@kccbrazil.com.br 이메일만 회원가입과 로그인이 가능합니다.",
+              "한 번 로그인하면 같은 브라우저에서는 자동으로 접속 상태가 유지됩니다.",
               "새 연락처/OCR 명함은 로그인 계정 기준으로 생성자와 시각이 기록됩니다.",
-              "수정, 병합, 행사 연결, 팔로업도 누가 처리했는지 감사 로그에 남습니다.",
             ].map((item) => (
               <div key={item} className="rounded-2xl bg-white/10 px-4 py-3 text-sm text-slate-100">
                 {item}
@@ -73,6 +73,9 @@ export default async function AuthPage({
                   name="email"
                   type="email"
                   required
+                  placeholder="name@kccbrazil.com.br"
+                  pattern="^[^@\s]+@kccbrazil\.com\.br$"
+                  title="@kccbrazil.com.br 이메일만 사용할 수 있습니다."
                   className="mt-2 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm"
                 />
               </div>
@@ -117,6 +120,9 @@ export default async function AuthPage({
                   name="email"
                   type="email"
                   required
+                  placeholder="name@kccbrazil.com.br"
+                  pattern="^[^@\s]+@kccbrazil\.com\.br$"
+                  title="@kccbrazil.com.br 이메일만 사용할 수 있습니다."
                   className="mt-2 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm"
                 />
               </div>
@@ -131,7 +137,7 @@ export default async function AuthPage({
                 />
               </div>
               <p className="text-xs leading-6 text-slate-500">
-                새 계정은 기본적으로 편집 가능한 실무자 계정으로 생성됩니다.
+                문화원 공식 이메일이 아니면 인증 메일을 보내지 않고 가입을 차단합니다.
               </p>
               <button
                 type="submit"

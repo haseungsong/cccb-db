@@ -34,6 +34,10 @@ function isMissingColumnError(error: unknown, columnName: string) {
   );
 }
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+}
+
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
@@ -74,8 +78,29 @@ export async function POST(request: Request) {
     );
   }
 
+  if (file.size > 10 * 1024 * 1024) {
+    return NextResponse.json(
+      { ok: false, message: "이미지 파일은 10MB 이하로 업로드해 주세요." },
+      { status: 400 },
+    );
+  }
+
   const originalBuffer = Buffer.from(await file.arrayBuffer());
-  const previewBuffer = await createPreviewImage(originalBuffer);
+  let previewBuffer: Buffer;
+
+  try {
+    previewBuffer = await createPreviewImage(originalBuffer);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        message: "이미지 미리보기 생성에 실패했습니다. 다른 JPG/PNG 파일로 다시 시도해 주세요.",
+        detail: getErrorMessage(error),
+      },
+      { status: 400 },
+    );
+  }
+
   const supabase = createSupabaseAdminClient();
   const basePath = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}`;
   const originalPath = `${basePath}-original.jpg`;
@@ -109,8 +134,46 @@ export async function POST(request: Request) {
     );
   }
 
-  const rawText = await runGoogleVisionOCR(originalBuffer);
-  const normalized = await normalizeBusinessCard(rawText);
+  let rawText = "";
+
+  try {
+    rawText = await runGoogleVisionOCR(originalBuffer);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        message: "Google Vision OCR 처리에 실패했습니다. API 키와 결제/권한 설정을 확인해 주세요.",
+        detail: getErrorMessage(error),
+      },
+      { status: 502 },
+    );
+  }
+
+  if (!rawText.trim()) {
+    return NextResponse.json(
+      {
+        ok: false,
+        message: "이미지에서 읽을 수 있는 텍스트를 찾지 못했습니다. 더 선명한 명함 사진으로 다시 시도해 주세요.",
+      },
+      { status: 422 },
+    );
+  }
+
+  let normalized: Awaited<ReturnType<typeof normalizeBusinessCard>>;
+
+  try {
+    normalized = await normalizeBusinessCard(rawText);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        message: "OCR 결과를 연락처 정보로 정리하는 과정에 실패했습니다. OpenAI API 키와 모델 설정을 확인해 주세요.",
+        detail: getErrorMessage(error),
+        rawText,
+      },
+      { status: 502 },
+    );
+  }
 
   let bestMatch: {
     id: string;
