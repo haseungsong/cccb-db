@@ -9,6 +9,9 @@ const cooperationAliases = [
   "친밀도",
 ] as const;
 
+export const cooperationLevelOptions = ["★", "★★", "★★★"] as const;
+export type CooperationLevelOption = (typeof cooperationLevelOptions)[number];
+
 function normalizeKey(value: string) {
   return value
     .normalize("NFD")
@@ -18,9 +21,72 @@ function normalizeKey(value: string) {
     .trim();
 }
 
+function compactValue(value: string) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
+
 export function normalizeCooperationLevel(value: string | null | undefined) {
-  const normalized = String(value ?? "").trim();
-  return normalized || "";
+  const normalized = compactValue(String(value ?? ""));
+
+  if (!normalized) {
+    return "";
+  }
+
+  if (
+    normalized.includes("★★★") ||
+    normalized.includes("3성") ||
+    normalized.includes("3점") ||
+    normalized.includes("3단계") ||
+    normalized.includes("세개") ||
+    normalized.includes("셋") ||
+    normalized.includes("매우") ||
+    normalized.includes("최상") ||
+    normalized.includes("핵심") ||
+    normalized.includes("우선") ||
+    normalized.includes("최우선") ||
+    normalized.includes("최고")
+  ) {
+    return "★★★";
+  }
+
+  if (
+    normalized.includes("★★") ||
+    normalized.includes("2성") ||
+    normalized.includes("2점") ||
+    normalized.includes("2단계") ||
+    normalized.includes("두개") ||
+    normalized.includes("둘") ||
+    normalized.includes("우호") ||
+    normalized.includes("친밀") ||
+    normalized.includes("높음") ||
+    normalized.includes("중요")
+  ) {
+    return "★★";
+  }
+
+  if (
+    normalized.includes("★") ||
+    normalized.includes("1성") ||
+    normalized.includes("1점") ||
+    normalized.includes("1단계") ||
+    normalized.includes("한개") ||
+    normalized.includes("하나") ||
+    normalized.includes("보통") ||
+    normalized.includes("기본") ||
+    normalized.includes("낮음") ||
+    normalized.includes("중간")
+  ) {
+    return "★";
+  }
+
+  if (/^[123]$/.test(normalized)) {
+    return normalized === "3" ? "★★★" : normalized === "2" ? "★★" : "★";
+  }
+
+  return "★";
 }
 
 export function extractCooperationLevelFromRecord(record: Record<string, unknown>) {

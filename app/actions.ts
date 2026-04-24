@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireActorContext, type ActorContext } from "@/lib/auth/actor";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { normalizeCooperationLevel } from "@/lib/contacts/cooperation";
 import { buildContactsCsv, buildContactsExportEmailSubject, buildContactsExportEmailText, buildContactsExportFileName } from "@/lib/contacts/export";
 import { saveContactProfilePhoto } from "@/lib/contacts/photo";
 import { getSearchableContacts } from "@/lib/contacts/queries";
@@ -236,7 +237,7 @@ export async function upsertContactAction(formData: FormData) {
     address: getNullableText(formData, "address"),
     city: getNullableText(formData, "city"),
     country: getNullableText(formData, "country") ?? "Brazil",
-    cooperation_level: getNullableText(formData, "cooperationLevel"),
+    cooperation_level: normalizeCooperationLevel(getText(formData, "cooperationLevel")) || null,
     category_id: getNullableText(formData, "categoryId"),
     owner_staff_id: explicitOwnerStaffId ?? actor.staffMemberId,
     is_influencer: getBoolean(formData, "isInfluencer"),

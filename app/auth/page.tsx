@@ -89,6 +89,21 @@ export default async function AuthPage({
                   className="mt-2 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm"
                 />
               </div>
+              <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                <input
+                  name="rememberMe"
+                  type="checkbox"
+                  value="true"
+                  defaultChecked
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                />
+                <span className="leading-6">
+                  자동 로그인 유지
+                  <span className="block text-xs text-slate-500">
+                    이 브라우저에서는 이후 접속 시 로그인 상태를 계속 유지합니다.
+                  </span>
+                </span>
+              </label>
               <button
                 type="submit"
                 className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"

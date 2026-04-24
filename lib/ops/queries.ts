@@ -4,6 +4,7 @@ import {
   getSearchableContacts,
   type ContactSearchFilters,
 } from "@/lib/contacts/queries";
+import { normalizeCooperationLevel } from "@/lib/contacts/cooperation";
 import { getFilterSummary } from "@/lib/contacts/search";
 import { parseAudienceFilterJson } from "@/lib/ops/audience";
 
@@ -119,27 +120,17 @@ export type EventInviteRecommendation = {
 };
 
 function cooperationScore(value: string) {
-  const normalized = value.toLowerCase();
+  const normalized = normalizeCooperationLevel(value);
 
-  if (
-    normalized.includes("매우") ||
-    normalized.includes("최상") ||
-    normalized.includes("핵심") ||
-    normalized.includes("우선")
-  ) {
+  if (normalized === "★★★") {
     return 45;
   }
 
-  if (
-    normalized.includes("우호") ||
-    normalized.includes("높") ||
-    normalized.includes("친") ||
-    normalized.includes("상")
-  ) {
+  if (normalized === "★★") {
     return 32;
   }
 
-  if (normalized.includes("보통") || normalized.includes("중")) {
+  if (normalized === "★") {
     return 16;
   }
 

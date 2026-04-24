@@ -89,40 +89,42 @@ export default async function Home() {
           </p>
 
           <form action="/cards" className="mt-6 rounded-[1.75rem] bg-slate-50 p-5">
-            <div className="grid gap-3 xl:grid-cols-[1.7fr_1fr_1fr_auto]">
+            <div className="grid gap-3">
               <SearchAutocomplete
                 placeholder="이름, 기관, 행사, 이메일, 전화로 검색"
                 inputClassName="w-full rounded-2xl border border-slate-300 bg-white px-4 py-4 text-sm text-slate-950 outline-none ring-0 placeholder:text-slate-500"
                 resultHintClassName="mt-2 text-xs text-slate-500"
               />
-              <select
-                name="category"
-                className="rounded-2xl border border-slate-300 bg-white px-4 py-4 text-sm font-medium text-slate-900"
-              >
-                <option value="all">전체 카테고리</option>
-                {facets.categories.slice(0, 20).map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-              <select
-                name="cooperation"
-                className="rounded-2xl border border-slate-300 bg-white px-4 py-4 text-sm font-medium text-slate-900"
-              >
-                <option value="all">전체 협력도</option>
-                {(facets.cooperationLevels ?? []).slice(0, 20).map((level) => (
-                  <option key={level} value={level}>
-                    {level}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="submit"
-                className="rounded-2xl bg-cyan-600 px-5 py-4 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700"
-              >
-                검색
-              </button>
+              <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                <select
+                  name="category"
+                  className="rounded-2xl border border-slate-300 bg-white px-4 py-4 text-sm font-medium text-slate-900"
+                >
+                  <option value="all">전체 카테고리</option>
+                  {facets.categories.slice(0, 20).map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  name="cooperation"
+                  className="rounded-2xl border border-slate-300 bg-white px-4 py-4 text-sm font-medium text-slate-900"
+                >
+                  <option value="all">전체 협력도</option>
+                  {(facets.cooperationLevels ?? []).slice(0, 20).map((level) => (
+                    <option key={level} value={level}>
+                      {level}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  className="rounded-2xl bg-cyan-600 px-5 py-4 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700"
+                >
+                  검색
+                </button>
+              </div>
             </div>
           </form>
 

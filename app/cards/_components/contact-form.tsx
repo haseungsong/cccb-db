@@ -1,4 +1,5 @@
 import { upsertContactAction } from "@/app/actions";
+import { cooperationLevelOptions } from "@/lib/contacts/cooperation";
 
 type Option = {
   id: string;
@@ -112,12 +113,18 @@ export function ContactForm({ mode, options, initialValues }: ContactFormProps) 
         </label>
         <label className="space-y-2 text-sm">
           <span className="font-medium text-slate-700">문화원 협력 수위/주요도</span>
-          <input
+          <select
             name="cooperationLevel"
             defaultValue={initialValues?.cooperationLevel ?? ""}
-            placeholder="예: 매우 우호적, 우선초청, 핵심 파트너"
             className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3"
-          />
+          >
+            <option value="">선택 안 함</option>
+            {cooperationLevelOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="space-y-2 text-sm md:col-span-2">
           <span className="font-medium text-slate-700">주소</span>
@@ -190,7 +197,7 @@ export function ContactForm({ mode, options, initialValues }: ContactFormProps) 
 
       <p className="text-xs leading-6 text-slate-500">
         담당자를 비워 두면 현재 로그인한 사용자 기준으로 자동 연결됩니다. 저장/수정 이력도
-        로그인 계정으로 기록됩니다.
+        로그인 계정으로 기록됩니다. 협력 수위는 `★ / ★★ / ★★★` 기준으로 통일합니다.
       </p>
 
       <label className="block space-y-2 text-sm">

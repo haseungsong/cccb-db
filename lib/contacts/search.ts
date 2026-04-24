@@ -1,4 +1,5 @@
 import type { ContactSearchFilters } from "@/lib/contacts/queries";
+import { normalizeCooperationLevel } from "@/lib/contacts/cooperation";
 
 type RawSearchParams = {
   q?: string;
@@ -32,7 +33,10 @@ export function normalizeContactSearchFilters(params: RawSearchParams): ContactS
     hasCard: normalizeFilterValue(params.hasCard),
     hasPhoto: normalizeFilterValue(params.hasPhoto),
     status: normalizeFilterValue(params.status),
-    cooperation: normalizeFilterValue(params.cooperation),
+    cooperation:
+      normalizeFilterValue(params.cooperation) === "all"
+        ? "all"
+        : normalizeCooperationLevel(params.cooperation),
   };
 }
 

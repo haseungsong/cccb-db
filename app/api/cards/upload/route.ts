@@ -37,6 +37,10 @@ type AnalysisItem = {
     originalPath: string;
     previewBucket: "cards-preview";
     previewPath: string;
+    uploadBatchKey: string;
+    uploadBatchLabel: string;
+    uploadedByLabel: string;
+    sourceFileName: string;
   };
 };
 
@@ -63,6 +67,21 @@ function getErrorMessage(error: unknown) {
 function readText(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value : "";
+}
+
+function slugifyForPath(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9가-힣]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function getFileExtension(file: File) {
+  const fromName = file.name.includes(".") ? file.name.split(".").pop() : "";
+  return (fromName || file.type.split("/")[1] || "jpg").toLowerCase();
 }
 
 function buildMergeSuggestion(normalized: NormalizedCard, candidates: ContactRecord[]): MergeSuggestion {
@@ -100,7 +119,13 @@ async function loadCandidates() {
   return (contactsQuery.data ?? []) as ContactRecord[];
 }
 
-async function uploadAssets(file: File) {
+async function uploadAssets(
+  file: File,
+  actor: NonNullable<Awaited<ReturnType<typeof getOptionalActorContext>>>,
+  uploadBatchKey: string,
+  uploadBatchLabel: string,
+  index: number,
+) {
   if (!file.type.startsWith("image/")) {
     throw new Error("명함 이미지 파일만 업로드할 수 있습니다.");
   }
@@ -112,8 +137,13 @@ async function uploadAssets(file: File) {
   const originalBuffer = Buffer.from(await file.arrayBuffer());
   const previewBuffer = await createPreviewImage(originalBuffer);
   const supabase = createSupabaseAdminClient();
-  const basePath = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}`;
-  const originalPath = `${basePath}-original.jpg`;
+  const datePrefix = new Date().toISOString().slice(0, 10);
+  const actorSlug = slugifyForPath(actor.displayName || actor.email || "staff");
+  const batchSlug = slugifyForPath(uploadBatchLabel || uploadBatchKey) || uploadBatchKey;
+  const fileSlug = slugifyForPath(file.name.replace(/\.[^.]+$/, "")) || `card-${index + 1}`;
+  const fileExtension = getFileExtension(file);
+  const basePath = `${datePrefix}/${actorSlug}/${batchSlug}/${String(index + 1).padStart(2, "0")}-${fileSlug}`;
+  const originalPath = `${basePath}-original.${fileExtension}`;
   const previewPath = `${basePath}-preview.jpg`;
 
   const [{ error: originalUploadError }, { error: previewUploadError }] = await Promise.all([
@@ -140,8 +170,22 @@ async function uploadAssets(file: File) {
   };
 }
 
-async function analyzeSingleFile(file: File, candidates: ContactRecord[], clientId: string) {
-  const { originalBuffer, originalPath, previewPath } = await uploadAssets(file);
+async function analyzeSingleFile(
+  file: File,
+  candidates: ContactRecord[],
+  clientId: string,
+  actor: NonNullable<Awaited<ReturnType<typeof getOptionalActorContext>>>,
+  uploadBatchKey: string,
+  uploadBatchLabel: string,
+  index: number,
+) {
+  const { originalBuffer, originalPath, previewPath } = await uploadAssets(
+    file,
+    actor,
+    uploadBatchKey,
+    uploadBatchLabel,
+    index,
+  );
   const rawText = await runGoogleVisionOCR(originalBuffer);
 
   if (!rawText.trim()) {
@@ -161,6 +205,10 @@ async function analyzeSingleFile(file: File, candidates: ContactRecord[], client
       originalPath,
       previewBucket: "cards-preview",
       previewPath,
+      uploadBatchKey,
+      uploadBatchLabel,
+      uploadedByLabel: actor.displayName,
+      sourceFileName: file.name,
     },
   } satisfies AnalysisItem;
 }
@@ -237,7 +285,13 @@ async function saveAnalyzedItem(item: AnalysisItem, actor: NonNullable<Awaited<R
     image_original_path: item.storage.originalPath,
     image_preview_path: item.storage.previewPath,
     ocr_raw_text: item.rawText,
-    extracted_json: item.normalized,
+    extracted_json: {
+      ...item.normalized,
+      _uploadBatchKey: item.storage.uploadBatchKey,
+      _uploadBatchLabel: item.storage.uploadBatchLabel,
+      _uploadedByLabel: item.storage.uploadedByLabel,
+      _sourceFileName: item.storage.sourceFileName,
+    },
     language_hint: item.normalized.languageHint || "pt-BR",
     review_status: mergeSuggestion.action === "needs-review" ? "needs_review" : "captured",
     created_by: actor.userId,
@@ -258,7 +312,13 @@ async function saveAnalyzedItem(item: AnalysisItem, actor: NonNullable<Awaited<R
           image_original_path: item.storage.originalPath,
           image_preview_path: item.storage.previewPath,
           ocr_raw_text: item.rawText,
-          extracted_json: item.normalized,
+          extracted_json: {
+            ...item.normalized,
+            _uploadBatchKey: item.storage.uploadBatchKey,
+            _uploadBatchLabel: item.storage.uploadBatchLabel,
+            _uploadedByLabel: item.storage.uploadedByLabel,
+            _sourceFileName: item.storage.sourceFileName,
+          },
           language_hint: item.normalized.languageHint || "pt-BR",
           review_status: mergeSuggestion.action === "needs-review" ? "needs_review" : "captured",
         })
@@ -284,6 +344,10 @@ async function saveAnalyzedItem(item: AnalysisItem, actor: NonNullable<Awaited<R
         actorTeamName: actor.teamName || null,
         mergeAction: mergeSuggestion.action,
         reviewedBeforeSave: true,
+        sourceFileName: item.storage.sourceFileName,
+        uploadBatchKey: item.storage.uploadBatchKey,
+        uploadBatchLabel: item.storage.uploadBatchLabel,
+        uploadedByLabel: item.storage.uploadedByLabel,
       },
     });
   }
@@ -342,6 +406,10 @@ export async function POST(request: Request) {
       storage: {
         originalPath: string;
         previewPath: string;
+        uploadBatchKey: string;
+        uploadBatchLabel: string;
+        uploadedByLabel: string;
+        sourceFileName: string;
       };
     }>;
 
@@ -368,6 +436,10 @@ export async function POST(request: Request) {
               originalPath: item.storage.originalPath,
               previewBucket: "cards-preview",
               previewPath: item.storage.previewPath,
+              uploadBatchKey: item.storage.uploadBatchKey,
+              uploadBatchLabel: item.storage.uploadBatchLabel,
+              uploadedByLabel: item.storage.uploadedByLabel,
+              sourceFileName: item.storage.sourceFileName,
             },
           },
           actor,
@@ -384,6 +456,12 @@ export async function POST(request: Request) {
 
   const rawFiles = formData.getAll("files");
   const files = rawFiles.filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  const uploadBatchLabel =
+    readText(formData, "uploadBatchLabel").trim() ||
+    `${new Date().toLocaleDateString("ko-KR")} OCR 업로드`;
+  const uploadBatchKey = `${new Date().toISOString().replace(/[:.]/g, "-")}-${crypto
+    .randomUUID()
+    .slice(0, 8)}`;
 
   if (files.length === 0) {
     const single = formData.get("file");
@@ -413,7 +491,17 @@ export async function POST(request: Request) {
 
   for (const [index, file] of files.entries()) {
     try {
-      items.push(await analyzeSingleFile(file, candidates, `${Date.now()}-${index}`));
+      items.push(
+        await analyzeSingleFile(
+          file,
+          candidates,
+          `${Date.now()}-${index}`,
+          actor,
+          uploadBatchKey,
+          uploadBatchLabel,
+          index,
+        ),
+      );
     } catch (error) {
       return NextResponse.json(
         {

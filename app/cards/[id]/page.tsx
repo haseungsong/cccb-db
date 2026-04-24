@@ -466,18 +466,45 @@ export default async function CardDetailPage({
                     <span className="text-xs text-slate-500">
                       {new Date(card.createdAt).toLocaleString("ko-KR")}
                     </span>
+                    {card.uploadedByLabel ? (
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                        업로더 {card.uploadedByLabel}
+                      </span>
+                    ) : null}
+                    {card.uploadBatchLabel ? (
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                        묶음 {card.uploadBatchLabel}
+                      </span>
+                    ) : null}
                   </div>
 
-                  {card.previewUrl ? (
-                    <a
-                      href={card.previewUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-4 block text-sm font-semibold text-cyan-700"
-                    >
-                      미리보기 이미지 열기
-                    </a>
-                  ) : null}
+                  <div className="mt-3 space-y-1 text-xs text-slate-500">
+                    {card.sourceFileName ? <div>원본 파일명 {card.sourceFileName}</div> : null}
+                    {card.uploadBatchKey ? <div>업로드 키 {card.uploadBatchKey}</div> : null}
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    {card.previewUrl ? (
+                      <a
+                        href={card.previewUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm font-semibold text-cyan-700"
+                      >
+                        미리보기 이미지 열기
+                      </a>
+                    ) : null}
+                    {card.originalUrl ? (
+                      <a
+                        href={card.originalUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm font-semibold text-slate-700"
+                      >
+                        원본 이미지 열기
+                      </a>
+                    ) : null}
+                  </div>
 
                   <div className="mt-4 grid gap-3">
                     {card.extractedEntries.map((entry) => (

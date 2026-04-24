@@ -1,5 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { extractCooperationLevelFromRecord } from "@/lib/contacts/cooperation";
+import { extractCooperationLevelFromRecord, normalizeCooperationLevel } from "@/lib/contacts/cooperation";
 import { normalizePhone, normalizeText } from "@/lib/contacts/mergeContact";
 import { normalizeStaffName } from "@/lib/staff/normalize";
 
@@ -179,6 +179,10 @@ export type ContactDetail = ContactListItem & {
     previewUrl: string | null;
     originalUrl: string | null;
     rawText: string;
+    uploadBatchKey: string;
+    uploadBatchLabel: string;
+    uploadedByLabel: string;
+    sourceFileName: string;
     extractedEntries: Array<{ key: string; value: string }>;
   }>;
   profileImages: Array<{
@@ -276,11 +280,23 @@ async function createSignedUrl(
 
 function flattenRawJson(record: Record<string, unknown>) {
   return Object.entries(record)
-    .filter(([, value]) => value !== null && value !== undefined && String(value).trim())
+    .filter(
+      ([key, value]) =>
+        !key.startsWith("_") && value !== null && value !== undefined && String(value).trim(),
+    )
     .map(([key, value]) => ({
       key,
       value: String(value),
     }));
+}
+
+function readBusinessCardUploadMeta(record: Record<string, unknown>) {
+  return {
+    uploadBatchKey: String(record._uploadBatchKey ?? ""),
+    uploadBatchLabel: String(record._uploadBatchLabel ?? ""),
+    uploadedByLabel: String(record._uploadedByLabel ?? ""),
+    sourceFileName: String(record._sourceFileName ?? ""),
+  };
 }
 
 function buildSearchableText(parts: Array<string | string[] | null | undefined>) {
@@ -519,14 +535,23 @@ function buildContactListItems(dataset: Dataset) {
     const profileImages = contactImagesMap.get(contact.id) ?? [];
     const tags = Array.from(new Set(contactTagsMap.get(contact.id) ?? [])).sort();
     const cooperationLevel =
-      contact.cooperation_level ||
-      legacyRows
-        .map((row) => extractCooperationLevelFromRecord(row.raw_json))
-        .find(Boolean) ||
+      normalizeCooperationLevel(contact.cooperation_level) ||
+      legacyRows.map((row) => extractCooperationLevelFromRecord(row.raw_json)).find(Boolean) ||
       "";
     const legacyText = legacyRows.flatMap((row) =>
       flattenRawJson(row.raw_json).map(({ key, value }) => `${key}: ${value}`),
     );
+    const businessCardText = businessCards.flatMap((row) => {
+      const uploadMeta = readBusinessCardUploadMeta(row.extracted_json);
+      return [
+        ...(row.ocr_raw_text ? [row.ocr_raw_text] : []),
+        ...flattenRawJson(row.extracted_json).map(({ key, value }) => `${key}: ${value}`),
+        uploadMeta.uploadBatchKey,
+        uploadMeta.uploadBatchLabel,
+        uploadMeta.uploadedByLabel,
+        uploadMeta.sourceFileName,
+      ].filter(Boolean);
+    });
 
     return {
       id: contact.id,
@@ -570,6 +595,7 @@ function buildContactListItems(dataset: Dataset) {
         sourceSheets,
         tags,
         legacyText,
+        businessCardText,
       ]),
     } satisfies ContactListItem;
   });
@@ -735,15 +761,22 @@ export async function getContactDetail(contactId: string) {
   const businessCards = await Promise.all(
     dataset.businessCards
       .filter((row) => row.contact_id === contactId)
-      .map(async (row) => ({
-        id: row.id,
-        reviewStatus: row.review_status,
-        createdAt: row.created_at,
-        previewUrl: await createSignedUrl("cards-preview", row.image_preview_path),
-        originalUrl: await createSignedUrl("cards-original", row.image_original_path),
-        rawText: row.ocr_raw_text ?? "",
-        extractedEntries: flattenRawJson(row.extracted_json),
-      })),
+      .map(async (row) => {
+        const uploadMeta = readBusinessCardUploadMeta(row.extracted_json);
+        return {
+          id: row.id,
+          reviewStatus: row.review_status,
+          createdAt: row.created_at,
+          previewUrl: await createSignedUrl("cards-preview", row.image_preview_path),
+          originalUrl: await createSignedUrl("cards-original", row.image_original_path),
+          rawText: row.ocr_raw_text ?? "",
+          uploadBatchKey: uploadMeta.uploadBatchKey,
+          uploadBatchLabel: uploadMeta.uploadBatchLabel,
+          uploadedByLabel: uploadMeta.uploadedByLabel,
+          sourceFileName: uploadMeta.sourceFileName,
+          extractedEntries: flattenRawJson(row.extracted_json),
+        };
+      }),
   );
 
   const profileImages = await Promise.all(
@@ -945,16 +978,28 @@ export async function getPendingBusinessCardReviews() {
   const contacts = buildContactListItems(dataset);
   const contactMap = new Map(contacts.map((contact) => [contact.id, contact]));
 
-  return dataset.businessCards
-    .filter((row) => row.review_status !== "approved")
-    .map((row) => ({
-      id: row.id,
-      reviewStatus: row.review_status,
-      createdAt: row.created_at,
-      contactId: row.contact_id ?? "",
-      contactName: row.contact_id ? contactMap.get(row.contact_id)?.name ?? "" : "",
-      extractedEntries: flattenRawJson(row.extracted_json),
-    }));
+  return Promise.all(
+    dataset.businessCards
+      .filter((row) => row.review_status !== "approved")
+      .map(async (row) => {
+        const uploadMeta = readBusinessCardUploadMeta(row.extracted_json);
+        return {
+          id: row.id,
+          reviewStatus: row.review_status,
+          createdAt: row.created_at,
+          contactId: row.contact_id ?? "",
+          contactName: row.contact_id ? contactMap.get(row.contact_id)?.name ?? "" : "",
+          previewUrl: await createSignedUrl("cards-preview", row.image_preview_path),
+          originalUrl: await createSignedUrl("cards-original", row.image_original_path),
+          rawText: row.ocr_raw_text ?? "",
+          uploadBatchKey: uploadMeta.uploadBatchKey,
+          uploadBatchLabel: uploadMeta.uploadBatchLabel,
+          uploadedByLabel: uploadMeta.uploadedByLabel,
+          sourceFileName: uploadMeta.sourceFileName,
+          extractedEntries: flattenRawJson(row.extracted_json),
+        };
+      }),
+  );
 }
 
 export async function getDashboardInsights() {
