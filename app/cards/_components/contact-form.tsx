@@ -35,7 +35,7 @@ type ContactFormProps = {
 
 export function ContactForm({ mode, options, initialValues }: ContactFormProps) {
   return (
-    <form action={upsertContactAction} className="space-y-6">
+    <form action={upsertContactAction} className="space-y-6" encType="multipart/form-data">
       <input type="hidden" name="contactId" defaultValue={initialValues?.id ?? ""} />
       <input
         type="hidden"
@@ -199,9 +199,22 @@ export function ContactForm({ mode, options, initialValues }: ContactFormProps) 
           name="tags"
           rows={4}
           defaultValue={initialValues?.tags.join(", ") ?? ""}
-          placeholder="예: 전시, 기자, 상파울루, 우선초청"
+          placeholder="예: 우선초청, 핵심협력, 언론, 인플루언서, 브라질문화, 상파울루, 행사초청, 후속필요, 대사관, 기업협력"
           className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3"
         />
+      </label>
+
+      <label className="block space-y-2 text-sm">
+        <span className="font-medium text-slate-700">프로필 사진</span>
+        <input
+          type="file"
+          name="profilePhoto"
+          accept="image/*"
+          className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3"
+        />
+        <p className="text-xs leading-6 text-slate-500">
+          새 사람을 추가하면서 바로 사진을 넣을 수 있고, 수정 화면에서는 새 파일로 교체됩니다.
+        </p>
       </label>
 
       <div className="flex flex-wrap gap-6 text-sm text-slate-700">

@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { extractCooperationLevelFromRecord } from "@/lib/contacts/cooperation";
 import { normalizePhone, normalizeText } from "@/lib/contacts/mergeContact";
+import { normalizeStaffName } from "@/lib/staff/normalize";
 
 function isMissingTableError(error: unknown) {
   if (!error || typeof error !== "object") {
@@ -450,7 +451,7 @@ async function loadContactDataset() {
 
 function buildContactListItems(dataset: Dataset) {
   const categoryMap = new Map(dataset.categories.map((row) => [row.id, row.name]));
-  const staffMap = new Map(dataset.staffMembers.map((row) => [row.id, row.name]));
+  const staffMap = new Map(dataset.staffMembers.map((row) => [row.id, normalizeStaffName(row.name)]));
   const eventMap = new Map(dataset.events.map((row) => [row.id, row]));
   const tagMap = new Map(dataset.tags.map((row) => [row.id, row.name]));
   const contactEventsMap = new Map<string, ContactEventRow[]>();
@@ -506,9 +507,7 @@ function buildContactListItems(dataset: Dataset) {
 
   return dataset.contacts.map((contact) => {
     const category = contact.category_id ? categoryMap.get(contact.category_id) ?? "" : "";
-    const ownerStaff = contact.owner_staff_id
-      ? staffMap.get(contact.owner_staff_id) ?? ""
-      : "";
+    const ownerStaff = contact.owner_staff_id ? normalizeStaffName(staffMap.get(contact.owner_staff_id) ?? "") : "";
     const eventLinks = contactEventsMap.get(contact.id) ?? [];
     const events = eventLinks
       .map((row) => eventMap.get(row.event_id)?.name ?? "")
@@ -750,6 +749,7 @@ export async function getContactDetail(contactId: string) {
   const profileImages = await Promise.all(
     dataset.contactImages
       .filter((row) => row.contact_id === contactId)
+      .sort((left, right) => Number(right.is_primary) - Number(left.is_primary))
       .map(async (row) => ({
         id: row.id,
         imageKind: row.image_kind,
@@ -805,10 +805,18 @@ export async function getSearchFacets() {
 
 export async function getContactFormOptions() {
   const dataset = await loadContactDataset();
+  const ownerMap = new Map<string, { id: string; name: string }>();
+  dataset.staffMembers.forEach((row) => {
+    const canonicalName = normalizeStaffName(row.name);
+    if (!canonicalName || ownerMap.has(canonicalName)) {
+      return;
+    }
+    ownerMap.set(canonicalName, { id: row.id, name: canonicalName });
+  });
 
   return {
     categories: dataset.categories.map((row) => ({ id: row.id, name: row.name })),
-    owners: dataset.staffMembers.map((row) => ({ id: row.id, name: row.name })),
+    owners: Array.from(ownerMap.values()).sort((left, right) => left.name.localeCompare(right.name, "ko")),
     events: dataset.events.map((row) => ({ id: row.id, name: row.name })),
     tags: dataset.tags.map((row) => ({ id: row.id, name: row.name, color: row.color ?? "" })),
   };

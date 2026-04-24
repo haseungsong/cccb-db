@@ -18,75 +18,35 @@ export default async function Home() {
   ]);
 
   const stats = [
-    { label: "전체 연락처", value: insights.totals.contacts },
-    { label: "행사", value: insights.totals.events },
-    { label: "검수 대기 명함", value: insights.totals.pendingCards },
-    { label: "중복 후보", value: duplicates.length },
+    { label: "전체 연락처", value: insights.totals.contacts, tone: "slate" },
+    { label: "행사", value: insights.totals.events, tone: "slate" },
+    { label: "검수 대기", value: insights.totals.pendingCards, tone: "amber" },
+    { label: "중복 후보", value: duplicates.length, tone: "rose" },
   ];
   const quickActions = [
     {
       title: "새 연락처 등록",
-      description: "직접 추가하거나 OCR 이전에 먼저 기본 프로필을 만들어 둘 때",
+      description: "신규 인물 직접 등록",
       href: "/cards/new",
-      accent: "bg-cyan-500 text-white",
     },
     {
       title: "OCR 명함 업로드",
-      description: "휴대폰으로 찍은 명함을 구조화하고 기존 연락처와 연결할 때",
+      description: "명함 촬영본 바로 등록",
       href: "/upload",
-      accent: "bg-white text-slate-900 border border-slate-200",
     },
     {
       title: "행사 운영",
-      description: "행사 생성, 초청/참석 기록, 참가자 관리까지 이어서 처리할 때",
+      description: "초청/참석 현황 정리",
       href: "/events",
-      accent: "bg-white text-slate-900 border border-slate-200",
     },
     {
       title: "검수 큐",
-      description: "중복 후보와 OCR 검수 대기를 먼저 정리해야 할 때",
+      description: "중복 및 OCR 검수 처리",
       href: "/review",
-      accent: "bg-white text-slate-900 border border-slate-200",
     },
     {
       title: "발송 센터",
-      description: "저장된 대상 리스트와 대표 메일 발송, CSV 공유를 관리할 때",
-      href: "/broadcasts",
-      accent: "bg-white text-slate-900 border border-slate-200",
-    },
-  ];
-  const tutorialSteps = [
-    "홈에서 오늘 처리할 항목을 보고 먼저 `검수 대기`, `담당자 미지정`, `중복 후보`를 확인합니다.",
-    "`수동 등록` 또는 `OCR 업로드`로 새 연락처를 추가합니다. OCR은 자동 저장 후 상세 화면에서 바로 보정할 수 있습니다.",
-    "`연락처` 화면에서 이름, 기관, 행사, 원본 시트, 태그, 상태, 명함/사진 유무까지 조건을 걸어 필요한 사람만 추립니다.",
-    "필요한 연락처를 열어 `태그`, `행사 연결`, `담당자`, `카테고리`, `상태`를 업데이트합니다.",
-    "`행사` 화면에서 초청 상태와 참석 상태를 관리하고 행사별 참가자 현황을 확인합니다.",
-    "현재 필터된 결과를 `CSV 다운로드`하거나 메일로 첨부 전송해서 외부 공유나 보고에 사용합니다.",
-  ];
-  const screenGuide = [
-    {
-      title: "연락처",
-      description: "가장 자주 쓰는 화면입니다. 상세 검색, 필터, CSV/메일 내보내기를 담당합니다.",
-      href: "/cards",
-    },
-    {
-      title: "행사",
-      description: "행사 단위로 사람을 묶고 초청/참석 흐름을 관리하는 곳입니다.",
-      href: "/events",
-    },
-    {
-      title: "검수",
-      description: "OCR 품질 확인과 중복 병합을 처리하는 정리 구간입니다.",
-      href: "/review",
-    },
-    {
-      title: "인사이트",
-      description: "현재 DB 구성과 운영상 빈틈을 요약해서 보는 대시보드입니다.",
-      href: "/insights",
-    },
-    {
-      title: "발송",
-      description: "저장된 대상 리스트, 메일 발송, WhatsApp 테스트 준비를 다룹니다.",
+      description: "대상 리스트/메일 공유",
       href: "/broadcasts",
     },
   ];
@@ -114,175 +74,104 @@ export default async function Home() {
   ];
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
-      <section className="overflow-hidden rounded-[1.75rem] bg-slate-950 text-white shadow-xl sm:rounded-[2rem]">
-        <div className="grid gap-8 px-5 py-7 sm:px-8 sm:py-10 lg:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:py-12">
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-cyan-300">
-                CCCB Contact Hub
-              </p>
-              <h1 className="max-w-4xl text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
-                처음 쓰는 사람도 바로 이해하는 문화원 연락처 운영 홈
-              </h1>
-              <p className="max-w-3xl text-sm leading-7 text-slate-200 sm:text-base">
-                연락처 수집, OCR, 행사 운영, 중복 검수, 내보내기까지 끊기지 않게
-                연결된 시작 화면입니다. 아래 순서대로만 쓰면 처음 보는 사람도
-                주요 기능을 모두 활용할 수 있습니다.
-              </p>
-            </div>
+    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
+      <section className="grid gap-6 xl:grid-cols-[1.35fr_0.9fr]">
+        <article className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-700">
+            연락처 운영 홈
+          </p>
+          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">
+            바로 찾고, 바로 정리하고, 바로 공유
+          </h1>
+          <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600">
+            이름, 기관, 행사, 태그, 문화원 협력도 기준으로 필요한 연락처를 찾고
+            등록, 검수, 발송 작업까지 이어서 처리할 수 있습니다.
+          </p>
 
-            <form
-              action="/cards"
-              className="rounded-[1.5rem] border border-white/15 bg-white/8 p-4 backdrop-blur"
-            >
-              <div className="grid gap-3 lg:grid-cols-[1.6fr_1fr_1fr_auto]">
-                <SearchAutocomplete
-                  placeholder="처음부터 바로 검색: 이름, 기관, 행사, 이메일, 전화"
-                  inputClassName="w-full rounded-2xl border border-white/15 bg-white px-4 py-4 text-sm text-slate-950 outline-none ring-0 placeholder:text-slate-500"
-                  resultHintClassName="mt-2 text-xs text-slate-300"
-                />
-                <select
-                  name="category"
-                  className="rounded-2xl border border-white/15 bg-white px-4 py-4 text-sm font-medium text-slate-900"
-                >
-                  <option value="all">전체 카테고리</option>
-                  {facets.categories.slice(0, 20).map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  name="cooperation"
-                  className="rounded-2xl border border-white/15 bg-white px-4 py-4 text-sm font-medium text-slate-900"
-                >
-                  <option value="all">전체 협력 수위</option>
-                  {(facets.cooperationLevels ?? []).slice(0, 20).map((level) => (
-                    <option key={level} value={level}>
-                      {level}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="submit"
-                  className="rounded-2xl bg-cyan-300 px-5 py-4 text-sm font-semibold text-slate-950 shadow-sm hover:bg-cyan-200"
-                >
-                  바로 찾기
-                </button>
-              </div>
-              <p className="mt-3 text-sm leading-6 text-slate-200">
-                홈에서 바로 검색한 뒤 `연락처` 화면에서 태그, 행사, 담당자, 명함 유무까지 더 좁혀서 찾을 수 있습니다.
-              </p>
-            </form>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              {quickActions.map((action) => (
-                <Link
-                  key={action.title}
-                  href={action.href}
-                  className={`rounded-3xl px-5 py-5 shadow-sm transition hover:-translate-y-0.5 ${action.accent}`}
-                >
-                  <div className="text-base font-semibold">{action.title}</div>
-                  <div className="mt-2 text-sm leading-6 opacity-95">
-                    {action.description}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            {stats.map((stat) => (
-              <article
-                key={stat.label}
-                className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur"
+          <form action="/cards" className="mt-6 rounded-[1.75rem] bg-slate-50 p-5">
+            <div className="grid gap-3 xl:grid-cols-[1.7fr_1fr_1fr_auto]">
+              <SearchAutocomplete
+                placeholder="이름, 기관, 행사, 이메일, 전화로 검색"
+                inputClassName="w-full rounded-2xl border border-slate-300 bg-white px-4 py-4 text-sm text-slate-950 outline-none ring-0 placeholder:text-slate-500"
+                resultHintClassName="mt-2 text-xs text-slate-500"
+              />
+              <select
+                name="category"
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-4 text-sm font-medium text-slate-900"
               >
-                <p className="text-sm text-slate-200">{stat.label}</p>
-                <p className="mt-3 text-3xl font-semibold text-white sm:text-4xl">{stat.value}</p>
-              </article>
-            ))}
-            <article className="sm:col-span-2 rounded-3xl border border-cyan-400/20 bg-cyan-400/10 p-5">
-              <p className="text-sm font-semibold text-cyan-100">오늘 먼저 볼 것</p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {helpfulLinks.map((item) => (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    className="rounded-2xl bg-white/12 px-4 py-3 text-sm transition hover:bg-white/20"
-                  >
-                    <div className="font-medium text-white">{item.label}</div>
-                    <div className="mt-1 text-cyan-50">{item.count}건</div>
-                  </Link>
+                <option value="all">전체 카테고리</option>
+                {facets.categories.slice(0, 20).map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
                 ))}
-              </div>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-950">
-                처음 사용자용 100% 활용 가이드
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                아래 순서대로 따라가면 핵심 기능을 놓치지 않고 모두 사용할 수 있습니다.
-              </p>
+              </select>
+              <select
+                name="cooperation"
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-4 text-sm font-medium text-slate-900"
+              >
+                <option value="all">전체 협력도</option>
+                {(facets.cooperationLevels ?? []).slice(0, 20).map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="rounded-2xl bg-cyan-600 px-5 py-4 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700"
+              >
+                검색
+              </button>
             </div>
-            <Link
-              href="/cards"
-              className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-            >
-              바로 시작
-            </Link>
-          </div>
+          </form>
 
-          <ol className="mt-6 grid gap-3">
-            {tutorialSteps.map((step, index) => (
-              <li
-                key={step}
-                className="flex gap-4 rounded-3xl bg-slate-50 px-4 py-4 text-sm text-slate-700"
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-semibold text-white">
-                  {index + 1}
-                </span>
-                <span className="leading-6">{step}</span>
-              </li>
-            ))}
-          </ol>
-
-          <div className="mt-6 rounded-3xl bg-cyan-50 p-5 text-sm leading-6 text-cyan-950">
-            검색 후 `연락처` 화면 상단에서 현재 조건 그대로 `CSV 다운로드` 또는
-            `이메일 첨부 전송`이 가능합니다. 보고용 목록을 만드는 가장 빠른 방법입니다.
-          </div>
-        </article>
-
-        <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-slate-950">화면별 사용법</h2>
-          <div className="mt-5 grid gap-3">
-            {screenGuide.map((screen) => (
+          <div className="mt-6 grid gap-3 md:grid-cols-3">
+            {quickActions.map((action) => (
               <Link
-                key={screen.title}
-                href={screen.href}
-                className="rounded-3xl border border-slate-200 p-4 transition hover:border-cyan-300 hover:bg-cyan-50/40"
+                key={action.title}
+                href={action.href}
+                className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-sm transition hover:border-cyan-300 hover:bg-cyan-50/40"
               >
-                <div className="text-base font-semibold text-slate-950">{screen.title}</div>
-                <div className="mt-2 text-sm leading-6 text-slate-600">
-                  {screen.description}
-                </div>
+                <div className="text-base font-semibold text-slate-950">{action.title}</div>
+                <div className="mt-2 text-sm leading-6 text-slate-600">{action.description}</div>
               </Link>
             ))}
           </div>
+        </article>
 
-          <div className="mt-6 rounded-3xl bg-slate-50 p-5">
-            <h3 className="text-sm font-semibold text-slate-900">현재 많이 쓰이는 데이터 축</h3>
-            <div className="mt-4 space-y-3 text-sm text-slate-600">
-              <p>카테고리: {facets.categories.slice(0, 8).join(", ") || "-"}</p>
-              <p>담당자: {facets.owners.slice(0, 8).join(", ") || "-"}</p>
-              <p>태그: {facets.tags.slice(0, 8).join(", ") || "-"}</p>
+        <article className="grid gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {stats.map((stat) => (
+              <div
+                key={stat.label}
+                className={`rounded-3xl border p-5 shadow-sm ${
+                  stat.tone === "amber"
+                    ? "border-amber-200 bg-amber-50"
+                    : stat.tone === "rose"
+                      ? "border-rose-200 bg-rose-50"
+                      : "border-slate-200 bg-white"
+                }`}
+              >
+                <p className="text-sm text-slate-600">{stat.label}</p>
+                <p className="mt-3 text-4xl font-semibold text-slate-950">{stat.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
+            <h2 className="text-lg font-semibold">오늘 먼저 볼 항목</h2>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {helpfulLinks.map((item) => (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className="rounded-2xl bg-white/10 px-4 py-4 transition hover:bg-white/15"
+                >
+                  <div className="text-sm font-medium text-white">{item.label}</div>
+                  <div className="mt-1 text-2xl font-semibold text-cyan-200">{item.count}건</div>
+                </Link>
+              ))}
             </div>
           </div>
         </article>
@@ -296,8 +185,7 @@ export default async function Home() {
                 최근 연락처
               </h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                최근 업데이트된 연락처를 바로 확인하고 상세 화면에서 행사,
-                원본 엑셀 행, OCR 데이터, 태그를 함께 볼 수 있습니다.
+                최근 수정된 연락처를 바로 열어 담당자, 태그, 행사, 협력도까지 이어서 정리할 수 있습니다.
               </p>
             </div>
             <Link
@@ -327,6 +215,11 @@ export default async function Home() {
                       담당자 {contact.ownerStaff || "미지정"} ·{" "}
                       {contact.city || "도시 미상"}
                     </p>
+                    {contact.cooperationLevel ? (
+                      <p className="mt-2 text-sm font-medium text-rose-700">
+                        문화원 협력 {contact.cooperationLevel}
+                      </p>
+                    ) : null}
                   </div>
                   {contact.isInfluencer ? (
                     <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">
@@ -352,7 +245,7 @@ export default async function Home() {
         <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold text-slate-950">운영 체크포인트</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            지금 바로 손봐야 할 항목을 홈에서 확인할 수 있게 정리했습니다.
+            누락되기 쉬운 작업을 바로 처리할 수 있도록 정리했습니다.
           </p>
 
           <div className="mt-6 space-y-3">
@@ -370,17 +263,15 @@ export default async function Home() {
             </div>
           </div>
 
-          <div className="mt-6 rounded-2xl bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-            이제는 단순 수집 단계가 아니라 운영 단계입니다. 새 연락처는 수동
-            등록 또는 OCR로 받고, 행사 연결과 태그, 검수 큐를 함께 관리하는
-            흐름으로 쓰시면 됩니다.
+          <div className="mt-6 rounded-2xl bg-cyan-50 p-4 text-sm leading-6 text-cyan-950">
+            검색 결과는 연락처 화면에서 그대로 CSV 다운로드 또는 이메일 첨부 전송으로 넘길 수 있습니다.
           </div>
         </article>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-slate-950">최근 행사와 공유 흐름</h2>
+          <h2 className="text-xl font-semibold text-slate-950">최근 행사</h2>
           <div className="mt-5 space-y-3">
             {events.slice(0, 6).map((event) => (
               <Link
@@ -397,14 +288,13 @@ export default async function Home() {
             ))}
           </div>
 
-          <div className="mt-6 rounded-3xl bg-amber-50 p-5 text-sm leading-6 text-amber-950">
-            행사 운영 후에는 `연락처` 화면에서 행사명으로 필터를 걸고, 해당 결과를
-            CSV 또는 메일 첨부로 바로 공유하면 됩니다.
+          <div className="mt-6 rounded-3xl bg-slate-50 p-5 text-sm leading-6 text-slate-700">
+            행사별 초청/참석 현황은 행사 화면에서 바로 수정할 수 있습니다.
           </div>
         </article>
 
         <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-slate-950">상위 카테고리</h2>
+          <h2 className="text-xl font-semibold text-slate-950">주요 분류와 검수 대기</h2>
           <div className="mt-5 space-y-3">
             {insights.topCategories.map((item) => (
               <div
@@ -415,6 +305,15 @@ export default async function Home() {
                 <strong className="text-slate-950">{item.count}</strong>
               </div>
             ))}
+          </div>
+
+          <div className="mt-8 rounded-3xl bg-slate-50 p-5">
+            <h3 className="text-sm font-semibold text-slate-900">자주 쓰는 축</h3>
+            <div className="mt-3 space-y-2 text-sm text-slate-600">
+              <p>카테고리: {facets.categories.slice(0, 8).join(", ") || "-"}</p>
+              <p>담당자: {facets.owners.slice(0, 8).join(", ") || "-"}</p>
+              <p>태그: {facets.tags.slice(0, 10).join(", ") || "우선초청, 핵심협력, 언론, 행사초청"}</p>
+            </div>
           </div>
 
           <h3 className="mt-8 text-lg font-semibold text-slate-950">최근 검수 대기 명함</h3>

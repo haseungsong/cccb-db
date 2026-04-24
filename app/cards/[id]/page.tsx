@@ -159,8 +159,14 @@ export default async function CardDetailPage({
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 협력 수위
               </dt>
-              <dd className="mt-2 text-sm text-slate-900">
-                {contact.cooperationLevel || "-"}
+              <dd className="mt-2">
+                {contact.cooperationLevel ? (
+                  <span className="inline-flex rounded-full bg-rose-100 px-3 py-1 text-sm font-semibold text-rose-800">
+                    문화원 협력 {contact.cooperationLevel}
+                  </span>
+                ) : (
+                  <span className="text-sm text-slate-900">-</span>
+                )}
               </dd>
             </div>
             <div className="rounded-2xl bg-slate-50 p-4 sm:col-span-2">

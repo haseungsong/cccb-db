@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireActorContext, type ActorContext } from "@/lib/auth/actor";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildContactsCsv, buildContactsExportEmailSubject, buildContactsExportEmailText, buildContactsExportFileName } from "@/lib/contacts/export";
+import { saveContactProfilePhoto } from "@/lib/contacts/photo";
 import { getSearchableContacts } from "@/lib/contacts/queries";
 import { buildContactSearchParams, normalizeContactSearchFilters } from "@/lib/contacts/search";
 import { hasSmtpConfig, sendEmailWithAttachments } from "@/lib/email/smtp";
@@ -223,6 +224,7 @@ export async function upsertContactAction(formData: FormData) {
   const contactId = getText(formData, "contactId");
   const redirectTo = getText(formData, "redirectTo");
   const explicitOwnerStaffId = getNullableText(formData, "ownerStaffId");
+  const profilePhoto = formData.get("profilePhoto");
 
   const payload = {
     name: getText(formData, "name") || "이름 미상",
@@ -267,8 +269,14 @@ export async function upsertContactAction(formData: FormData) {
 
   const savedContactId = result.data.id;
   await replaceContactTags(savedContactId, getText(formData, "tags"));
+
+  if (profilePhoto instanceof File && profilePhoto.size > 0) {
+    await saveContactProfilePhoto(supabase, savedContactId, profilePhoto);
+  }
+
   await createAuditLog(savedContactId, contactId ? "manual-update" : "manual-create", {
     source: "contact-form",
+    profilePhotoUploaded: profilePhoto instanceof File && profilePhoto.size > 0,
   }, actor);
 
   revalidatePath("/");

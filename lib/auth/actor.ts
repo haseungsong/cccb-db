@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { normalizeStaffName } from "@/lib/staff/normalize";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -39,7 +40,7 @@ function isMissingColumnError(error: unknown, columnName: string) {
 }
 
 function buildFallbackName(email: string) {
-  return email.split("@")[0]?.trim() || "담당자";
+  return normalizeStaffName(email.split("@")[0]?.trim() || "담당자");
 }
 
 async function readProfile(userId: string) {
@@ -73,6 +74,7 @@ async function readProfile(userId: string) {
 
 async function resolveStaffMember(displayName: string, email: string) {
   const supabase = createSupabaseAdminClient();
+  const canonicalDisplayName = normalizeStaffName(displayName);
   const byEmail = email
     ? await supabase
         .from("staff_members")
@@ -95,10 +97,10 @@ async function resolveStaffMember(displayName: string, email: string) {
     throw allStaff.error;
   }
 
-  const normalizedDisplayName = displayName.trim().toLowerCase();
+  const normalizedDisplayName = canonicalDisplayName.trim().toLowerCase();
   return (
     ((allStaff.data ?? []) as StaffRow[]).find(
-      (row) => row.name.trim().toLowerCase() === normalizedDisplayName,
+      (row) => normalizeStaffName(row.name).trim().toLowerCase() === normalizedDisplayName,
     ) ?? null
   );
 }
@@ -117,11 +119,13 @@ export async function getOptionalActorContext() {
   const profile = await readProfile(user.id);
   const email = user.email ?? profile?.email ?? "";
   const displayName =
-    profile?.display_name?.trim() ||
+    normalizeStaffName(
+      profile?.display_name?.trim() ||
     (typeof user.user_metadata?.display_name === "string"
       ? user.user_metadata.display_name.trim()
       : "") ||
-    buildFallbackName(email);
+    buildFallbackName(email),
+    );
   const teamName =
     (typeof profile?.team_name === "string" ? profile.team_name : "") ||
     (typeof user.user_metadata?.team_name === "string" ? user.user_metadata.team_name.trim() : "");

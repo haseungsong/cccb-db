@@ -65,11 +65,8 @@ export default function UploadPage() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col gap-8 px-6 py-10">
       <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-        <p className="text-sm font-semibold uppercase tracking-[0.24em] text-cyan-700">
-          Mobile OCR Upload
-        </p>
         <h1 className="mt-3 text-3xl font-semibold text-slate-950">
-          명함 사진 업로드 테스트
+          명함 OCR 업로드
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
           휴대폰 브라우저에서 이 화면을 열고 바로 촬영하거나 파일을 선택하면,
@@ -128,8 +125,7 @@ export default function UploadPage() {
             2. 분석 결과
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            환경변수가 모두 설정되어 있으면 OCR 결과와 중복 후보뿐 아니라
-            Supabase 저장 결과까지 바로 확인할 수 있습니다.
+            업로드 후 OCR 결과, 중복 후보, 저장된 연락처 번호를 바로 확인할 수 있습니다.
           </p>
 
           {!result ? (

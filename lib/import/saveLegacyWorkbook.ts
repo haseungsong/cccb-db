@@ -10,6 +10,7 @@ import {
   type ExistingContactCandidate,
 } from "@/lib/contacts/mergeContact";
 import { extractCooperationLevelFromRecord } from "@/lib/contacts/cooperation";
+import { normalizeStaffKey, normalizeStaffName } from "@/lib/staff/normalize";
 import type { NormalizedCard } from "@/lib/validators/card";
 
 type AdminClient = SupabaseClient;
@@ -339,7 +340,7 @@ async function ensureStaffMembers(
   rows: LegacyMappedRow[],
 ) {
   const names = Array.from(
-    new Set(rows.map((row) => row.ownerStaff.trim()).filter(Boolean)),
+    new Set(rows.map((row) => normalizeStaffName(row.ownerStaff)).filter(Boolean)),
   );
 
   if (names.length === 0) {
@@ -349,10 +350,10 @@ async function ensureStaffMembers(
   const existing = await supabase.from("staff_members").select("id, name");
   const existingRows = (existing.data ?? []) as StaffRow[];
   const existingMap = new Map(
-    existingRows.map((row) => [normalizeText(row.name), row.id]),
+    existingRows.map((row) => [normalizeStaffKey(row.name), row.id]),
   );
 
-  const missing = names.filter((name) => !existingMap.has(normalizeText(name)));
+  const missing = names.filter((name) => !existingMap.has(normalizeStaffKey(name)));
 
   let createdCount = 0;
 
@@ -367,7 +368,7 @@ async function ensureStaffMembers(
       throw insertResult.error;
     }
 
-    existingMap.set(normalizeText(name), insertResult.data.id);
+    existingMap.set(normalizeStaffKey(name), insertResult.data.id);
     createdCount += 1;
   }
 
@@ -720,9 +721,7 @@ export async function importLegacyWorkbookToSupabase(
     const categoryId = row.category
       ? categoryMap.get(normalizeText(row.category)) ?? null
       : null;
-    const ownerStaffId = row.ownerStaff
-      ? staffMap.get(normalizeText(row.ownerStaff)) ?? null
-      : null;
+    const ownerStaffId = row.ownerStaff ? staffMap.get(normalizeStaffKey(row.ownerStaff)) ?? null : null;
     const payload = buildContactPayload(row, categoryId, ownerStaffId);
     const existingContactId = findExistingContactId(row, contactMaps);
 

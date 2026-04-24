@@ -1,4 +1,5 @@
 import { extractCooperationLevelFromRecord } from "@/lib/contacts/cooperation";
+import { normalizeStaffName } from "@/lib/staff/normalize";
 import * as XLSX from "xlsx";
 
 export type LegacyPreviewRow = {
@@ -609,7 +610,7 @@ export function extractLegacyWorkbookData(buffer: Buffer) {
         name: draft.name,
         company: draft.company,
         category: draft.category,
-        ownerStaff: draft.ownerStaff,
+        ownerStaff: normalizeStaffName(draft.ownerStaff),
         email: draft.email,
         phone: draft.phone,
         imageHint:

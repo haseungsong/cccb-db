@@ -218,7 +218,8 @@ export default async function CardsPage({
             <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
               <p className="font-semibold text-slate-900">태그 예시</p>
               <p className="mt-2 leading-6 text-slate-600">
-                {facets.tags.slice(0, 10).join(", ") || "-"}
+                {facets.tags.slice(0, 12).join(", ") ||
+                  "우선초청, 핵심협력, 언론, 인플루언서, 브라질문화, 상파울루, 행사초청, 후속필요"}
               </p>
             </div>
           </div>
@@ -292,8 +293,8 @@ export default async function CardsPage({
                   </span>
                 ))}
                 {contact.cooperationLevel ? (
-                  <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
-                    협력 {contact.cooperationLevel}
+                  <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-800">
+                    문화원 협력 {contact.cooperationLevel}
                   </span>
                 ) : null}
               </div>

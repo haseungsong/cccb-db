@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { normalizeStaffName } from "@/lib/staff/normalize";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -23,6 +24,7 @@ function isMissingColumnError(error: unknown, columnName: string) {
 
 async function ensureStaffMember(displayName: string, email: string) {
   const supabase = createSupabaseAdminClient();
+  const canonicalName = normalizeStaffName(displayName);
 
   if (email) {
     const existingByEmail = await supabase
@@ -44,7 +46,7 @@ async function ensureStaffMember(displayName: string, email: string) {
   const existingByName = await supabase
     .from("staff_members")
     .select("id")
-    .eq("name", displayName)
+    .eq("name", canonicalName)
     .limit(1)
     .maybeSingle();
 
@@ -59,7 +61,7 @@ async function ensureStaffMember(displayName: string, email: string) {
   const created = await supabase
     .from("staff_members")
     .insert({
-      name: displayName,
+      name: canonicalName,
       email: email || null,
       role: "editor",
     })
@@ -134,7 +136,9 @@ export async function signInAction(formData: FormData) {
 export async function signUpAction(formData: FormData) {
   const email = getText(formData, "email");
   const password = getText(formData, "password");
-  const displayName = getText(formData, "displayName") || email.split("@")[0] || "담당자";
+  const displayName = normalizeStaffName(
+    getText(formData, "displayName") || email.split("@")[0] || "담당자",
+  );
   const teamName = getText(formData, "teamName");
   const supabase = await createSupabaseServerClient();
 
